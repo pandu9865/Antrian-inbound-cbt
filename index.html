@@ -17,108 +17,70 @@
           "GRAD" 0,
           "opsz" 24;
       }
-
       html.dark {
         color-scheme: dark;
         --background: 8 20 37;
         --surface: 8 20 37;
-        --surface-dim: 8 20 37;
         --surface-container-lowest: 4 14 31;
         --surface-container-low: 17 28 45;
         --surface-container: 21 32 49;
         --surface-container-high: 31 42 60;
         --surface-container-highest: 42 53 72;
-        --surface-variant: 42 53 72;
-        --surface-bright: 47 58 76;
         --on-surface: 216 227 251;
         --on-surface-variant: 195 198 215;
-        --on-background: 216 227 251;
         --primary: 180 197 255;
         --primary-container: 37 99 235;
-        --primary-fixed: 219 225 255;
-        --primary-fixed-dim: 180 197 255;
         --on-primary: 0 42 120;
         --on-primary-container: 238 239 255;
-        --on-primary-fixed: 0 23 75;
         --secondary: 210 187 255;
         --secondary-container: 96 1 209;
-        --secondary-fixed: 234 221 255;
-        --secondary-fixed-dim: 210 187 255;
-        --on-secondary: 63 0 142;
         --on-secondary-container: 201 174 255;
         --tertiary: 255 181 150;
-        --tertiary-container: 188 72 0;
-        --tertiary-fixed-dim: 255 181 150;
         --error: 255 180 171;
         --error-container: 147 0 10;
-        --on-error: 105 0 5;
         --on-error-container: 255 218 214;
         --outline: 141 144 160;
         --outline-variant: 67 70 85;
-        --inverse-surface: 216 227 251;
-        --inverse-on-surface: 38 49 67;
-        --inverse-primary: 0 83 219;
-        --surface-tint: 180 197 255;
         --success: 74 222 128;
         --warning: 251 191 36;
         --shader-opacity: 0.8;
         --shader-filter: saturate(1) brightness(1);
         --shader-blend: normal;
       }
-
       html.light {
         color-scheme: light;
         --background: 245 248 255;
         --surface: 245 248 255;
-        --surface-dim: 233 240 251;
         --surface-container-lowest: 238 244 255;
         --surface-container-low: 255 255 255;
         --surface-container: 237 243 252;
         --surface-container-high: 223 233 248;
         --surface-container-highest: 208 220 239;
-        --surface-variant: 219 230 247;
-        --surface-bright: 255 255 255;
         --on-surface: 15 23 42;
         --on-surface-variant: 71 85 105;
-        --on-background: 15 23 42;
         --primary: 29 78 216;
         --primary-container: 37 99 235;
-        --primary-fixed: 219 234 254;
-        --primary-fixed-dim: 147 197 253;
         --on-primary: 255 255 255;
         --on-primary-container: 239 246 255;
-        --on-primary-fixed: 15 23 42;
         --secondary: 109 40 217;
         --secondary-container: 109 40 217;
-        --secondary-fixed: 237 233 254;
-        --secondary-fixed-dim: 196 181 253;
-        --on-secondary: 255 255 255;
         --on-secondary-container: 245 243 255;
         --tertiary: 234 88 12;
-        --tertiary-container: 254 215 170;
-        --tertiary-fixed-dim: 253 186 116;
         --error: 220 38 38;
         --error-container: 254 226 226;
-        --on-error: 255 255 255;
         --on-error-container: 127 29 29;
         --outline: 100 116 139;
         --outline-variant: 203 213 225;
-        --inverse-surface: 15 23 42;
-        --inverse-on-surface: 248 250 252;
-        --inverse-primary: 96 165 250;
-        --surface-tint: 37 99 235;
         --success: 22 163 74;
         --warning: 217 119 6;
         --shader-opacity: 0.24;
         --shader-filter: saturate(1.25) brightness(1.55);
         --shader-blend: multiply;
       }
-
       body {
         background: rgb(var(--background));
         color: rgb(var(--on-surface));
       }
-
       #shader-bg {
         opacity: var(--shader-opacity) !important;
         filter: var(--shader-filter);
@@ -185,121 +147,99 @@
       .light ::-webkit-scrollbar-thumb {
         background: #c4c6cf;
       }
+      .form-input,
+      .form-select {
+        background: rgb(var(--surface-container-high) / 0.55);
+        border: 1px solid rgb(var(--outline-variant));
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        outline: none;
+        width: 100%;
+      }
+      .form-input:focus,
+      .form-select:focus {
+        box-shadow: 0 0 0 1px rgb(var(--primary));
+        border-color: rgb(var(--primary));
+      }
+      .thin-tab {
+        border: 1px solid rgb(var(--outline-variant));
+        background: rgb(var(--surface-container) / 0.65);
+        color: rgb(var(--on-surface-variant));
+      }
+      .thin-tab.active {
+        background: rgb(var(--secondary-container));
+        color: rgb(var(--on-secondary-container));
+        border-color: rgb(var(--secondary-container));
+        font-weight: 800;
+      }
     </style>
-    <script id="tailwind-config">
+    <script>
       tailwind.config = {
         darkMode: "class",
         theme: {
           extend: {
             colors: {
-              "primary-fixed-dim":
-                "rgb(var(--primary-fixed-dim) / <alpha-value>)",
-              "tertiary-fixed-dim":
-                "rgb(var(--tertiary-fixed-dim) / <alpha-value>)",
-              tertiary: "rgb(var(--tertiary) / <alpha-value>)",
-              "on-secondary-container":
-                "rgb(var(--on-secondary-container) / <alpha-value>)",
-              "inverse-surface": "rgb(var(--inverse-surface) / <alpha-value>)",
-              "on-error-container":
-                "rgb(var(--on-error-container) / <alpha-value>)",
-              "outline-variant": "rgb(var(--outline-variant) / <alpha-value>)",
-              "on-primary-container":
-                "rgb(var(--on-primary-container) / <alpha-value>)",
-              "inverse-on-surface":
-                "rgb(var(--inverse-on-surface) / <alpha-value>)",
-              "surface-container-low":
-                "rgb(var(--surface-container-low) / <alpha-value>)",
-              "on-surface-variant":
-                "rgb(var(--on-surface-variant) / <alpha-value>)",
-              "on-primary": "rgb(var(--on-primary) / <alpha-value>)",
-              "surface-container":
-                "rgb(var(--surface-container) / <alpha-value>)",
-              "on-primary-fixed":
-                "rgb(var(--on-primary-fixed) / <alpha-value>)",
-              "tertiary-container":
-                "rgb(var(--tertiary-container) / <alpha-value>)",
-              "surface-dim": "rgb(var(--surface-dim) / <alpha-value>)",
+              background: "rgb(var(--background) / <alpha-value>)",
+              surface: "rgb(var(--surface) / <alpha-value>)",
               "surface-container-lowest":
                 "rgb(var(--surface-container-lowest) / <alpha-value>)",
-              "surface-variant": "rgb(var(--surface-variant) / <alpha-value>)",
-              error: "rgb(var(--error) / <alpha-value>)",
+              "surface-container-low":
+                "rgb(var(--surface-container-low) / <alpha-value>)",
+              "surface-container":
+                "rgb(var(--surface-container) / <alpha-value>)",
+              "surface-container-high":
+                "rgb(var(--surface-container-high) / <alpha-value>)",
               "surface-container-highest":
                 "rgb(var(--surface-container-highest) / <alpha-value>)",
               "on-surface": "rgb(var(--on-surface) / <alpha-value>)",
-              "secondary-fixed-dim":
-                "rgb(var(--secondary-fixed-dim) / <alpha-value>)",
-              "on-error": "rgb(var(--on-error) / <alpha-value>)",
-              "inverse-primary": "rgb(var(--inverse-primary) / <alpha-value>)",
-              "surface-bright": "rgb(var(--surface-bright) / <alpha-value>)",
-              "surface-tint": "rgb(var(--surface-tint) / <alpha-value>)",
-              outline: "rgb(var(--outline) / <alpha-value>)",
-              "on-background": "rgb(var(--on-background) / <alpha-value>)",
+              "on-surface-variant":
+                "rgb(var(--on-surface-variant) / <alpha-value>)",
               primary: "rgb(var(--primary) / <alpha-value>)",
-              background: "rgb(var(--background) / <alpha-value>)",
-              "on-secondary": "rgb(var(--on-secondary) / <alpha-value>)",
-              "secondary-container":
-                "rgb(var(--secondary-container) / <alpha-value>)",
-              "surface-container-high":
-                "rgb(var(--surface-container-high) / <alpha-value>)",
-              surface: "rgb(var(--surface) / <alpha-value>)",
-              "error-container": "rgb(var(--error-container) / <alpha-value>)",
-              "primary-fixed": "rgb(var(--primary-fixed) / <alpha-value>)",
               "primary-container":
                 "rgb(var(--primary-container) / <alpha-value>)",
+              "on-primary": "rgb(var(--on-primary) / <alpha-value>)",
+              "on-primary-container":
+                "rgb(var(--on-primary-container) / <alpha-value>)",
               secondary: "rgb(var(--secondary) / <alpha-value>)",
+              "secondary-container":
+                "rgb(var(--secondary-container) / <alpha-value>)",
+              "on-secondary-container":
+                "rgb(var(--on-secondary-container) / <alpha-value>)",
+              tertiary: "rgb(var(--tertiary) / <alpha-value>)",
+              error: "rgb(var(--error) / <alpha-value>)",
+              "error-container": "rgb(var(--error-container) / <alpha-value>)",
+              "on-error-container":
+                "rgb(var(--on-error-container) / <alpha-value>)",
+              outline: "rgb(var(--outline) / <alpha-value>)",
+              "outline-variant": "rgb(var(--outline-variant) / <alpha-value>)",
               success: "rgb(var(--success) / <alpha-value>)",
               warning: "rgb(var(--warning) / <alpha-value>)",
             },
-            borderRadius: {
-              DEFAULT: "0.125rem",
-              lg: "0.25rem",
-              xl: "0.5rem",
-              full: "0.75rem",
+            fontFamily: {
+              "queue-id": ["JetBrains Mono"],
+              "body-md": ["Montserrat"],
+              "label-sm": ["Montserrat"],
+              "headline-md": ["Montserrat"],
             },
             spacing: {
-              base: "4px",
-              "row-height-lg": "72px",
               "row-height-md": "56px",
               "container-padding": "24px",
               gutter: "16px",
             },
-            fontFamily: {
-              "headline-lg": ["Montserrat"],
-              "body-lg": ["Montserrat"],
-              "display-lg": ["Montserrat"],
-              "headline-md": ["Montserrat"],
-              "label-sm": ["Montserrat"],
-              "queue-id": ["JetBrains Mono"],
-              "body-md": ["Montserrat"],
-            },
             fontSize: {
-              "headline-lg": [
-                "32px",
-                { lineHeight: "40px", fontWeight: "700" },
-              ],
-              "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
-              "display-lg": [
-                "72px",
+              "label-sm": ["12px", { lineHeight: "16px", fontWeight: "700" }],
+              "queue-id": [
+                "20px",
                 {
-                  lineHeight: "80px",
-                  letterSpacing: "-0.02em",
-                  fontWeight: "800",
+                  lineHeight: "24px",
+                  letterSpacing: ".05em",
+                  fontWeight: "700",
                 },
               ],
               "headline-md": [
                 "24px",
                 { lineHeight: "32px", fontWeight: "700" },
               ],
-              "label-sm": ["12px", { lineHeight: "16px", fontWeight: "700" }],
-              "queue-id": [
-                "20px",
-                {
-                  lineHeight: "24px",
-                  letterSpacing: "0.05em",
-                  fontWeight: "700",
-                },
-              ],
-              "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
             },
           },
         },
@@ -325,7 +265,7 @@
       >
         <div class="px-6 mb-8">
           <h1
-            class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight"
+            class="font-headline-md text-2xl font-extrabold text-on-surface tracking-tight"
           >
             Inbound CBT
           </h1>
@@ -340,6 +280,10 @@
           <button data-page="daftar" class="nav-btn">
             <span class="material-symbols-outlined">app_registration</span
             ><span>Daftar</span>
+          </button>
+          <button data-page="checker" class="nav-btn">
+            <span class="material-symbols-outlined">fact_check</span
+            ><span>Checker</span>
           </button>
           <button data-page="antrian" class="nav-btn">
             <span class="material-symbols-outlined">format_list_numbered</span
@@ -370,9 +314,9 @@
             <span class="material-symbols-outlined">settings</span
             ><span>Setting</span>
           </button>
-          <button data-page="bantuan" class="nav-btn">
-            <span class="material-symbols-outlined">help</span
-            ><span>Bantuan</span>
+          <button data-page="debug" class="nav-btn">
+            <span class="material-symbols-outlined">bug_report</span
+            ><span>Debug</span>
           </button>
         </div>
       </aside>
@@ -385,16 +329,22 @@
             <span
               id="page-title"
               class="font-headline-md text-headline-md font-bold text-primary truncate"
-              >Antrian</span
+              >Daftar</span
             >
             <div class="hidden sm:block h-6 w-px bg-outline-variant"></div>
             <span
               id="page-subtitle"
               class="hidden sm:inline font-label-sm text-label-sm bg-surface-container-high text-primary px-3 py-1 rounded-full border border-primary/20 truncate"
-              >Pantau dan panggil driver inbound</span
+              >Input security</span
             >
           </div>
           <div class="flex items-center gap-3 sm:gap-6">
+            <span
+              id="api-pill"
+              class="hidden md:inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full border border-outline-variant bg-surface-container/70 text-on-surface-variant"
+              ><span class="w-2 h-2 rounded-full bg-error"></span>API belum
+              diset</span
+            >
             <span
               id="live-clock"
               class="hidden lg:block font-queue-id text-sm text-on-surface-variant"
@@ -428,6 +378,7 @@
         >
           <div id="mobile-nav" class="flex gap-2 min-w-max">
             <button data-page="daftar" class="mobile-nav-btn">Daftar</button>
+            <button data-page="checker" class="mobile-nav-btn">Checker</button>
             <button data-page="antrian" class="mobile-nav-btn">Antrian</button>
             <button data-page="panggil" class="mobile-nav-btn">Panggil</button>
             <button data-page="dock" class="mobile-nav-btn">Dock</button>
@@ -444,55 +395,107 @@
     </div>
 
     <div
-      class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-on-surface text-surface-container px-6 py-3 rounded-full font-bold shadow-2xl opacity-0 transition-all transform translate-y-10 pointer-events-none z-50 flex items-center gap-3"
+      class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-on-surface text-surface px-6 py-3 rounded-full font-bold shadow-2xl opacity-0 transition-all transform translate-y-10 pointer-events-none z-50 flex items-center gap-3"
       id="toast"
     >
-      <span class="material-symbols-outlined">check_circle</span>
-      <span id="toast-message">Berhasil</span>
+      <span class="material-symbols-outlined">check_circle</span
+      ><span id="toast-message">Berhasil</span>
     </div>
 
     <script>
+      /*
+       * GANTI INI SETELAH DEPLOY GAS WEB APP.
+       * Contoh:
+       * const API_URL = "https://script.google.com/macros/s/AKfycbxxxx/exec";
+       */
+      const API_URL = "PASTE_GAS_WEB_APP_URL_HERE";
+
       const state = {
-        page: "antrian",
-        lastCalled: { queue: "IB-023", dock: "Dock 04", driver: "Budi S." },
-        queue: [
-          {
-            id: "IB-024",
-            status: "MENUNGGU",
-            dock: "-",
-            wait: "22:45",
-            driver: "Sarah L.",
-            supplier: "Supplier A",
-            priority: "Normal",
-          },
-          {
-            id: "IB-025",
-            status: "PRIORITAS",
-            dock: "Dock 03",
-            wait: "02:10",
-            driver: "Jin S.",
-            supplier: "Supplier B",
-            priority: "High",
-          },
-          {
-            id: "IB-026",
-            status: "DI DOCK",
-            dock: "Dock 02",
-            wait: "04:12",
-            driver: "Marcus V.",
-            supplier: "Supplier C",
-            priority: "Normal",
-          },
-          {
-            id: "IB-027",
-            status: "MENUNGGU",
-            dock: "-",
-            wait: "18:03",
-            driver: "Andi P.",
-            supplier: "Supplier D",
-            priority: "Normal",
-          },
-        ],
+        page: "daftar",
+        loading: false,
+        schema: null,
+        options: {
+          fleet_type: [
+            "Truck",
+            "CDD",
+            "CDE",
+            "Engkel",
+            "Box",
+            "Blind Van",
+            "Kontainer",
+            "Motor",
+          ],
+          security_status: [
+            "WAITING",
+            "CALLED",
+            "ON_DOCK",
+            "UNLOADING",
+            "COMPLETED",
+            "HOLD",
+          ],
+          checker_status: [
+            "ARRIVED",
+            "ON_DOCK",
+            "UNLOADING",
+            "CHECKING",
+            "COMPLETED",
+            "HOLD",
+          ],
+          unload_sla: ["SLA OK", "SLA MISS", "ON PROCESS"],
+          gate: [
+            "Dock 01",
+            "Dock 02",
+            "Dock 03",
+            "Dock 04",
+            "Dock 05",
+            "Dock 06",
+            "Chiller 01",
+            "Chiller 02",
+          ],
+          vendor_name: [],
+          po_number: [],
+        },
+        dashboard: demoDashboard(),
+        lastCalled: {
+          queue_no: "IB-023",
+          gate: "Dock 04",
+          vendor_name: "Supplier Demo",
+        },
+        poLookup: null,
+        debug: null,
+      };
+
+      const pageMeta = {
+        daftar: {
+          title: "Daftar",
+          subtitle: "Security input: vendor, armada, plat, dan PO",
+        },
+        checker: {
+          title: "Checker",
+          subtitle: "Checker input: gate, status, dan SLA bongkar",
+        },
+        antrian: {
+          title: "Antrian",
+          subtitle: "Pantau urutan dan panggil driver inbound",
+        },
+        panggil: {
+          title: "Panggil",
+          subtitle: "Layar panggilan untuk TV/display",
+        },
+        dock: { title: "Dock", subtitle: "Pantau dock kosong dan aktif" },
+        monitor: {
+          title: "Monitor",
+          subtitle: "KPI dari CAPHAND, PUTAWAY, dan ticket",
+        },
+        laporan: {
+          title: "Laporan",
+          subtitle: "Report hasil input security dan checker",
+        },
+        setting: { title: "Setting", subtitle: "Set API URL dan refresh data" },
+        debug: {
+          title: "Debug",
+          subtitle: "Cek raw data API dan sample response",
+        },
       };
 
       const navBase =
@@ -504,407 +507,365 @@
       const mobActive =
         "px-4 py-2 rounded-full text-label-sm bg-secondary-container text-on-secondary-container border border-secondary-container font-bold";
 
-      const pageMeta = {
-        daftar: {
-          title: "Daftar",
-          subtitle: "Input driver datang dan ambil nomor antrian",
-        },
-        antrian: {
-          title: "Antrian",
-          subtitle: "Pantau urutan dan panggil driver inbound",
-        },
-        panggil: {
-          title: "Panggil",
-          subtitle: "Layar panggilan model bank untuk TV/display",
-        },
-        dock: {
-          title: "Dock",
-          subtitle: "Pantau dock kosong, aktif, dan warning",
-        },
-        monitor: {
-          title: "Monitor",
-          subtitle: "Ringkasan performa inbound hari ini",
-        },
-        laporan: {
-          title: "Laporan",
-          subtitle: "Rekap dan export data antrian",
-        },
-        setting: { title: "Setting", subtitle: "Atur SLA, dock, dan tampilan" },
-        bantuan: {
-          title: "Bantuan",
-          subtitle: "Panduan singkat penggunaan sistem",
-        },
-      };
+      function hasApi() {
+        return API_URL && !API_URL.includes("PASTE_GAS_WEB_APP_URL_HERE");
+      }
+      function apiUrl(action, params = {}) {
+        const u = new URL(API_URL);
+        u.searchParams.set("action", action);
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== "")
+            u.searchParams.set(k, v);
+        });
+        u.searchParams.set("_", Date.now());
+        return u.toString();
+      }
+      async function apiGet(action, params = {}) {
+        if (!hasApi()) throw new Error("API_URL belum diganti.");
+        const res = await fetch(apiUrl(action, params), {
+          method: "GET",
+          redirect: "follow",
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "API error");
+        return json.data;
+      }
+      async function apiPost(action, payload = {}) {
+        if (!hasApi()) throw new Error("API_URL belum diganti.");
+        const res = await fetch(apiUrl(action), {
+          method: "POST",
+          body: JSON.stringify(payload),
+          redirect: "follow",
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "API error");
+        return json.data;
+      }
+
+      async function initApi() {
+        updateApiPill("loading", "Cek API...");
+        if (!hasApi()) {
+          updateApiPill("off", "API belum diset");
+          return;
+        }
+        try {
+          const [schema, dash] = await Promise.all([
+            apiGet("schema"),
+            apiGet("dashboard"),
+          ]);
+          state.schema = schema;
+          state.options = dash.options || schema.options || state.options;
+          state.dashboard = dash;
+          updateApiPill("on", "API live");
+          renderPage(state.page, false);
+        } catch (err) {
+          console.error(err);
+          updateApiPill("error", "API error");
+          showToast("API error: " + err.message);
+        }
+      }
+      function updateApiPill(mode, text) {
+        const pill = document.getElementById("api-pill");
+        if (!pill) return;
+        const color =
+          mode === "on"
+            ? "bg-success"
+            : mode === "loading"
+              ? "bg-warning"
+              : "bg-error";
+        pill.innerHTML = `<span class="w-2 h-2 rounded-full ${color} ${mode === "on" ? "status-pulse" : ""}"></span>${text}`;
+      }
 
       function kpiCards() {
-        return `
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-gutter">
-          ${cardKpi("Total Antrian", "42", "pending_actions", "text-primary", "+12% dari rata-rata")}
-          ${cardKpi("Menunggu", "18", "schedule", "text-tertiary", "3 sudah > 60 menit")}
-          ${cardKpi("SLA OK", "98.4%", "verified", "text-primary", "Target 95%")}
+        const kpis =
+          (state.dashboard && state.dashboard.kpis) || demoDashboard().kpis;
+        return `<div class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-gutter">
+          ${kpis.map(kpiCard).join("")}
           <div class="bg-primary-container p-6 rounded-xl flex flex-col justify-between shadow-lg shadow-primary-container/20 group hover:brightness-110 transition-all cursor-pointer overflow-hidden relative">
-            <div class="flex justify-between items-start">
-              <span class="font-headline-md text-headline-md text-on-primary-container">Siap Dipanggil</span>
-              <span class="material-symbols-outlined text-on-primary-container">arrow_forward_ios</span>
-            </div>
-            <button class="mt-4 bg-on-primary text-primary-fixed-dim py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors" id="call-next-btn" onclick="callNext(this)">
-              <span class="material-symbols-outlined">campaign</span>
-              PANGGIL BERIKUTNYA
+            <div class="flex justify-between items-start"><span class="font-headline-md text-xl text-on-primary-container">Panggil</span><span class="material-symbols-outlined text-on-primary-container">arrow_forward_ios</span></div>
+            <button class="mt-4 bg-on-primary text-primary-container py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-black hover:text-white transition-colors" onclick="callNext(this)">
+              <span class="material-symbols-outlined">campaign</span>PANGGIL NEXT
             </button>
           </div>
         </div>`;
       }
-
-      function cardKpi(label, value, icon, color, note) {
-        return `
-        <div class="glass-card p-6 rounded-xl flex flex-col gap-2 relative overflow-hidden group">
-          <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-            <span class="material-symbols-outlined text-4xl">${icon}</span>
-          </div>
-          <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">${label}</span>
-          <div class="flex items-end gap-2">
-            <span class="font-headline-lg text-headline-lg ${color}" id="kpi-${label.toLowerCase().replaceAll(" ", "-")}">${value}</span>
-          </div>
-          <span class="text-[11px] text-on-surface-variant">${note}</span>
+      function kpiCard(k) {
+        const cls =
+          {
+            primary: "text-primary",
+            secondary: "text-secondary",
+            tertiary: "text-tertiary",
+            success: "text-success",
+            warning: "text-warning",
+            error: "text-error",
+          }[k.color] || "text-primary";
+        return `<div class="glass-card p-5 rounded-xl flex flex-col gap-2 relative overflow-hidden group">
+          <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><span class="material-symbols-outlined text-4xl">${k.icon || "analytics"}</span></div>
+          <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">${esc(k.label)}</span>
+          <span class="font-headline-md text-3xl ${cls}">${esc(k.display_value ?? k.value ?? 0)}</span>
+          <span class="text-[11px] text-on-surface-variant">${esc(k.source || "api")}.${esc(k.metric || "metric")}</span>
         </div>`;
-      }
-
-      function queueTable() {
-        return `
-        <div class="glass-card rounded-xl overflow-hidden border border-outline-variant/30">
-          <div class="p-6 border-b border-outline-variant/30 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-            <div class="flex items-center gap-3">
-              <span class="material-symbols-outlined text-primary">stream</span>
-              <h3 class="font-headline-md text-headline-md">Data Antrian</h3>
-            </div>
-            <div class="flex gap-2">
-              <input class="bg-surface-container-high/50 border-none rounded-lg text-label-sm px-4 py-2 w-full md:w-64 focus:ring-1 focus:ring-primary" placeholder="Cari nomor / driver..." type="text"/>
-              <button class="bg-surface-container-high/50 p-2 rounded-lg material-symbols-outlined">filter_list</button>
-            </div>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left">
-              <thead class="bg-surface-container text-on-surface-variant">
-                <tr>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider">No. Antrian</th>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider">Dock</th>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider">Lama Tunggu</th>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider">Driver</th>
-                  <th class="px-6 py-4 font-label-sm uppercase tracking-wider text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-outline-variant/10">
-                ${state.queue.map(rowTemplate).join("")}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-      }
-
-      function rowTemplate(q) {
-        const style =
-          q.status === "DI DOCK"
-            ? "bg-primary/20 text-primary border-primary/30"
-            : q.status === "PRIORITAS"
-              ? "bg-primary/10 text-primary border-primary/50"
-              : "bg-tertiary/20 text-tertiary border-tertiary/30";
-        const icon =
-          q.status === "DI DOCK"
-            ? "local_shipping"
-            : q.status === "PRIORITAS"
-              ? "star"
-              : "schedule";
-        return `
-        <tr class="hover:bg-primary/5 transition-colors group ${q.status === "PRIORITAS" ? "border-l-4 border-primary" : ""}">
-          <td class="px-6 py-4">
-            <div class="flex items-center gap-3">
-              <span class="w-2 h-2 rounded-full ${q.status === "MENUNGGU" ? "bg-tertiary" : "bg-primary status-pulse"}"></span>
-              <span class="font-queue-id ${q.status === "PRIORITAS" ? "text-primary" : ""}">${q.id}</span>
-            </div>
-          </td>
-          <td class="px-6 py-4">
-            <span class="px-3 py-1 rounded-full text-[10px] font-bold ${style} border flex items-center gap-1 w-fit">
-              <span class="material-symbols-outlined text-[14px]">${icon}</span>${q.status}
-            </span>
-          </td>
-          <td class="px-6 py-4 font-label-sm">${q.dock}</td>
-          <td class="px-6 py-4 font-queue-id text-sm">${q.wait}</td>
-          <td class="px-6 py-4 text-on-surface-variant font-label-sm">${q.driver}</td>
-          <td class="px-6 py-4 text-right">
-            <button onclick="showToast('Detail ${q.id} dibuka')" class="text-on-surface-variant hover:text-primary material-symbols-outlined">info</button>
-          </td>
-        </tr>`;
       }
 
       function pageDaftar() {
-        return `
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+        const o = state.options;
+        const lookup = state.poLookup;
+        return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
           <div class="lg:col-span-2 glass-card rounded-xl p-6">
-            <h3 class="font-headline-md text-headline-md mb-1">Ambil Nomor Antrian</h3>
-            <p class="text-on-surface-variant mb-6">Isi data driver/supplier. Nomor dibuat otomatis.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${inputField("Nama Supplier", "Contoh: Supplier A")}
-              ${inputField("Nama Driver", "Contoh: Budi Santoso")}
-              ${inputField("Nomor Polisi", "Contoh: B 1234 XYZ")}
-              ${inputField("No. Dokumen", "SJ / PO / ASN")}
-              ${selectField("Tipe Inbound", ["PO", "Transfer", "Return", "Manual"])}
-              ${selectField("Prioritas", ["Normal", "High", "VIP"])}
+            <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+              <div><h3 class="font-headline-md text-headline-md mb-1">Security Input</h3><p class="text-on-surface-variant">Input driver datang. Total PO Qty dan Count SKU auto lookup dari CAPHAND.</p></div>
+              <button onclick="lookupPo()" class="thin-tab rounded-lg px-4 py-2 font-label-sm flex items-center gap-2 w-fit"><span class="material-symbols-outlined">search</span>Lookup PO</button>
             </div>
-            <button onclick="generateQueue()" class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110">
-              <span class="material-symbols-outlined">confirmation_number</span>
-              Buat Nomor
-            </button>
+            <form id="security-form" onsubmit="submitSecurity(event)">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${textInput("vendor_name", "Vendor Name", "Contoh: PT Tirta Investama", "vendor-list", lookup?.summary?.vendor_name)}
+                ${selectInput("fleet_type", "Fleet Type", o.fleet_type)}
+                ${textInput("plat_number", "Plat Number", "Contoh: B 1234 XYZ")}
+                ${textInput("po_number", "PO Number", "ID1/POR/...", "po-list", lookup?.summary?.po_number)}
+                ${selectInput("status", "Status", o.security_status, "WAITING")}
+                <label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Auto Summary</span><div class="grid grid-cols-2 gap-2">
+                  <div class="bg-surface-container/60 border border-outline-variant rounded-lg p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Total PO Qty</div><div id="security-total-qty" class="font-queue-id text-primary">${num(lookup?.summary?.total_po_qty || 0)}</div></div>
+                  <div class="bg-surface-container/60 border border-outline-variant rounded-lg p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Count SKU</div><div id="security-count-sku" class="font-queue-id text-primary">${num(lookup?.summary?.count_po_sku || 0)}</div></div>
+                </div></label>
+              </div>
+              ${datalists()}
+              <button class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110" type="submit">
+                <span class="material-symbols-outlined">confirmation_number</span>Buat Nomor
+              </button>
+            </form>
           </div>
           <div class="glass-card rounded-xl p-6 flex flex-col justify-center items-center text-center">
             <span class="text-on-surface-variant uppercase font-label-sm">Nomor Terakhir</span>
-            <div id="new-queue-number" class="font-display-lg text-display-lg text-primary my-6">IB-023</div>
-            <p class="text-on-surface-variant">Kasih nomor ini ke driver. Simpel, nggak usah drama.</p>
+            <div id="new-queue-number" class="font-queue-id text-[70px] md:text-[88px] leading-none text-primary my-6">${esc(state.lastCalled.queue_no || "IB-000")}</div>
+            <p class="text-on-surface-variant">Kasih nomor ini ke driver. Simpel. No drama.</p>
           </div>
         </div>`;
       }
 
-      function inputField(label, placeholder) {
-        return `<label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">${label}</span><input class="bg-surface-container-high/50 border border-outline-variant rounded-lg px-4 py-3 focus:ring-1 focus:ring-primary" placeholder="${placeholder}"/></label>`;
-      }
-
-      function selectField(label, options) {
-        return `<label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">${label}</span><select class="bg-surface-container-high/50 border border-outline-variant rounded-lg px-4 py-3 focus:ring-1 focus:ring-primary">${options.map((o) => `<option>${o}</option>`).join("")}</select></label>`;
+      function pageChecker() {
+        const o = state.options;
+        return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+          <div class="lg:col-span-2 glass-card rounded-xl p-6">
+            <h3 class="font-headline-md text-headline-md mb-1">Checker Input</h3>
+            <p class="text-on-surface-variant mb-6">Update gate, status bongkar, dan SLA. Ini nulis ke kolom J:O.</p>
+            <form id="checker-form" onsubmit="submitChecker(event)">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${textInput("vendor_name", "Vendor Name", "Contoh: Supplier A", "vendor-list")}
+                ${selectInput("fleet_type", "Fleet Type", o.fleet_type)}
+                ${textInput("plat_number", "Plat Number", "Contoh: B 1234 XYZ")}
+                ${selectInput("gate", "Gate", o.gate)}
+                ${selectInput("status", "Status", o.checker_status, "ON_DOCK")}
+                ${selectInput("unload_sla", "Unload SLA", o.unload_sla, "ON PROCESS")}
+              </div>
+              ${datalists()}
+              <button class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110" type="submit">
+                <span class="material-symbols-outlined">save</span>Simpan Checker
+              </button>
+            </form>
+          </div>
+          <div class="glass-card rounded-xl p-6">
+            <h3 class="font-headline-md text-headline-md mb-4">Status Cepat</h3>
+            <div class="space-y-3">
+              ${miniMetric("On Process", state.dashboard?.summary?.checker?.on_process || 0, "text-warning")}
+              ${miniMetric("Completed", state.dashboard?.summary?.checker?.completed || 0, "text-success")}
+              ${miniMetric("SLA OK", (state.dashboard?.summary?.checker?.sla_ok_pct || 0) + "%", "text-primary")}
+            </div>
+          </div>
+        </div>`;
       }
 
       function pageAntrian() {
-        return `
-        ${kpiCards()}
+        return `${kpiCards()}
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-          <div class="lg:col-span-2 glass-card rounded-xl p-6 relative overflow-hidden flex flex-col">
-            <div class="flex justify-between items-start mb-6">
-              <div>
-                <h3 class="font-headline-md text-headline-md">Ringkasan Antrian</h3>
-                <p class="font-label-sm text-on-surface-variant">Urutan driver yang sedang menunggu panggilan</p>
-              </div>
-              <div class="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
-                <div class="w-2 h-2 rounded-full bg-primary status-pulse"></div>
-                <span class="text-[10px] uppercase font-bold text-primary">Live</span>
-              </div>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
-              ${miniMetric("Dock Kosong", "4", "text-primary")}
-              ${miniMetric("Sedang Bongkar", "12", "text-tertiary")}
-              ${miniMetric("Sudah Selesai", "82", "text-success")}
-              ${miniMetric("Hold", "4", "text-error")}
-            </div>
+          <div class="lg:col-span-2 glass-card rounded-xl p-6">
+            <div class="flex justify-between items-start mb-6"><div><h3 class="font-headline-md text-headline-md">Ringkasan Antrian</h3><p class="font-label-sm text-on-surface-variant">Urutan driver dari QUEUE_TICKET / Security Input</p></div><div class="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20"><div class="w-2 h-2 rounded-full bg-primary status-pulse"></div><span class="text-[10px] uppercase font-bold text-primary">Live</span></div></div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">${miniMetric("Waiting", state.dashboard?.summary?.ticket?.count_waiting || 0, "text-tertiary")}${miniMetric("Called", state.dashboard?.summary?.ticket?.count_called || 0, "text-primary")}${miniMetric("On Dock", state.dashboard?.summary?.ticket?.count_on_dock || 0, "text-warning")}${miniMetric("Completed", state.dashboard?.summary?.ticket?.count_completed || 0, "text-success")}</div>
           </div>
           <div class="glass-card rounded-xl p-6 flex flex-col gap-4">
-            <div class="flex justify-between items-center">
-              <h3 class="font-headline-md text-headline-md">Prioritas</h3>
-              <span class="material-symbols-outlined text-on-surface-variant">more_vert</span>
-            </div>
-            ${priorityItem("IB-025", "Supplier B", "Dock 03", "READY", true)}
-            ${priorityItem("IB-030", "Supplier Urgent", "Dock 01", "8m tunggu", false)}
-            ${priorityItem("IB-031", "Frozen Item", "Dock C1", "12m tunggu", false)}
+            <div class="flex justify-between items-center"><h3 class="font-headline-md text-headline-md">Prioritas</h3><span class="material-symbols-outlined text-on-surface-variant">more_vert</span></div>
+            ${(state.dashboard?.priority || []).slice(0, 4).map(priorityItem).join("") || emptyBox("Belum ada prioritas.")}
             <button onclick="switchPage('panggil')" class="w-full py-2 border border-outline-variant rounded text-label-sm hover:bg-surface-container transition-colors uppercase font-bold tracking-widest mt-auto">Buka Panggilan</button>
           </div>
-        </div>
-        ${queueTable()}`;
-      }
-
-      function miniMetric(label, value, color) {
-        return `<div class="p-4 rounded-lg bg-surface-container/50 border border-outline-variant/30"><span class="text-[10px] text-on-surface-variant uppercase font-bold">${label}</span><div class="text-xl font-bold ${color}">${value}</div></div>`;
-      }
-
-      function priorityItem(id, supplier, dock, status, active) {
-        return `<div class="p-4 rounded-lg ${active ? "bg-surface-container-high border-primary/20" : "bg-surface-container/30 border-outline-variant/30"} border flex justify-between items-center group hover:bg-primary/10 transition-colors cursor-pointer">
-        <div class="flex flex-col"><span class="font-queue-id text-queue-id ${active ? "text-primary" : "text-on-surface"}">${id}</span><span class="text-[10px] font-bold text-on-surface-variant uppercase">${supplier}</span></div>
-        <div class="text-right"><span class="font-label-sm block ${active ? "text-primary" : ""}">${dock}</span><span class="text-[10px] text-on-surface-variant">${status}</span></div>
-      </div>`;
+        </div>${queueTable()}`;
       }
 
       function pagePanggil() {
-        return `
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+        const last =
+          state.lastCalled || (state.dashboard?.queue || [])[0] || {};
+        return `<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
           <div class="lg:col-span-8 glass-card rounded-xl p-8 min-h-[520px] flex flex-col items-center justify-center text-center">
             <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-[0.35em]">Nomor Dipanggil</span>
-            <div id="display-queue" class="font-display-lg text-[96px] md:text-[150px] leading-none text-primary my-8">${state.lastCalled.queue}</div>
-            <div class="bg-primary-container text-on-primary-container rounded-xl px-10 py-5 text-3xl md:text-5xl font-extrabold">
-              <span id="display-dock">${state.lastCalled.dock}</span>
-            </div>
-            <p class="text-on-surface-variant mt-8 text-lg">Silakan menuju dock yang tertera.</p>
+            <div id="display-queue" class="font-queue-id text-[96px] md:text-[150px] leading-none text-primary my-8">${esc(last.queue_no || "IB-000")}</div>
+            <div class="bg-primary-container text-on-primary-container rounded-xl px-10 py-5 text-3xl md:text-5xl font-extrabold"><span id="display-dock">${esc(last.gate || "Dock 01")}</span></div>
+            <p class="text-on-surface-variant mt-8 text-lg">${esc(last.vendor_name || "Silakan menuju dock yang tertera.")}</p>
           </div>
           <div class="lg:col-span-4 flex flex-col gap-gutter">
-            <div class="glass-card rounded-xl p-6">
-              <h3 class="font-headline-md text-headline-md mb-4">Kontrol Panggilan</h3>
-              <button onclick="callNext()" class="w-full bg-primary-container text-on-primary-container py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110">
-                <span class="material-symbols-outlined">campaign</span> Panggil Berikutnya
-              </button>
-              <button onclick="recall()" class="w-full mt-3 border border-outline-variant py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-surface-container">
-                <span class="material-symbols-outlined">replay</span> Panggil Ulang
-              </button>
+            <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Kontrol Panggilan</h3>
+              <select id="call-gate" class="form-select mb-3">${(state.options.gate || []).map((g) => `<option>${esc(g)}</option>`).join("")}</select>
+              <button onclick="callNext()" class="w-full bg-primary-container text-on-primary-container py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110"><span class="material-symbols-outlined">campaign</span>Panggil Berikutnya</button>
+              <button onclick="recall()" class="w-full mt-3 border border-outline-variant py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-surface-container"><span class="material-symbols-outlined">replay</span>Panggil Ulang</button>
             </div>
-            <div class="glass-card rounded-xl p-6 flex-1">
-              <h3 class="font-headline-md text-headline-md mb-4">Terakhir Dipanggil</h3>
-              ${["IB-023 - Dock 04", "IB-022 - Dock 02", "IB-021 - Dock 01", "IB-020 - Dock 05"].map((x) => `<div class="py-3 border-b border-outline-variant/30 font-queue-id">${x}</div>`).join("")}
-            </div>
+            <div class="glass-card rounded-xl p-6 flex-1"><h3 class="font-headline-md text-headline-md mb-4">Queue Terbaru</h3>${(
+              state.dashboard?.queue || []
+            )
+              .slice(0, 6)
+              .map(
+                (x) =>
+                  `<div class="py-3 border-b border-outline-variant/30"><span class="font-queue-id">${esc(x.queue_no)}</span><span class="float-right text-on-surface-variant">${esc(x.gate || x.status || "-")}</span></div>`,
+              )
+              .join("")}</div>
           </div>
         </div>`;
       }
 
       function pageDock() {
-        const docks = [
-          ["Dock 01", "AKTIF", "IB-030"],
-          ["Dock 02", "BONGKAR", "IB-026"],
-          ["Dock 03", "SIAP", "-"],
-          ["Dock 04", "DIPANGGIL", state.lastCalled.queue],
-          ["Dock 05", "AKTIF", "IB-020"],
-          ["Dock 06", "KOSONG", "-"],
-          ["Chiller 01", "AKTIF", "IB-031"],
-          ["Chiller 02", "WARNING", "IB-032"],
-        ];
-        return `
-        <div class="glass-card rounded-xl p-6">
-          <div class="flex justify-between items-center mb-8">
-            <div>
-              <h3 class="font-headline-md text-headline-md">Status Dock</h3>
-              <p class="text-on-surface-variant">Cek dock kosong dan dock yang sedang proses.</p>
-            </div>
-            <button onclick="showToast('Data dock direfresh')" class="bg-surface-container-high px-4 py-2 rounded-lg font-label-sm flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button>
-          </div>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            ${docks.map(([dock, status, queue]) => dockCard(dock, status, queue)).join("")}
-          </div>
+        const docks = state.dashboard?.dock || [];
+        return `<div class="glass-card rounded-xl p-6">
+          <div class="flex justify-between items-center mb-8"><div><h3 class="font-headline-md text-headline-md">Status Dock</h3><p class="text-on-surface-variant">Cek dock kosong, aktif, dan warning.</p></div><button onclick="refreshDashboard()" class="bg-surface-container-high px-4 py-2 rounded-lg font-label-sm flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button></div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">${docks.map(dockCard).join("") || emptyBox("Belum ada data dock.")}</div>
         </div>`;
-      }
-
-      function dockCard(dock, status, queue) {
-        const cls =
-          status === "KOSONG" || status === "SIAP"
-            ? "border-2 border-dashed border-outline-variant text-on-surface-variant"
-            : status === "WARNING"
-              ? "bg-error-container text-on-error-container border-2 border-error status-pulse"
-              : "bg-primary-container text-on-primary-container";
-        return `<div class="rounded-xl p-5 ${cls} min-h-[140px] flex flex-col justify-between hover:-translate-y-1 transition-transform">
-        <div class="font-headline-md text-headline-md">${dock}</div>
-        <div>
-          <div class="font-label-sm text-label-sm uppercase opacity-80">${status}</div>
-          <div class="font-queue-id mt-1">${queue}</div>
-        </div>
-      </div>`;
       }
 
       function pageMonitor() {
-        return `
-        ${kpiCards()}
+        const s = state.dashboard?.summary || {};
+        return `${kpiCards()}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
-          <div class="glass-card rounded-xl p-6">
-            <h3 class="font-headline-md text-headline-md mb-2">SLA Hari Ini</h3>
-            <p class="text-on-surface-variant mb-6">Target selesai inbound tepat waktu.</p>
-            <div class="h-48 flex items-end gap-2">
-              ${[70, 82, 90, 88, 45, 96, 80, 76, 98, 42, 91, 85].map((h, i) => `<div class="flex-1 ${h < 60 ? "bg-error/40 hover:bg-error" : "bg-primary/30 hover:bg-primary"} rounded-t transition-all" style="height:${h}%"></div>`).join("")}
-            </div>
-            <div class="flex justify-between text-[10px] text-on-surface-variant mt-2 font-label-sm uppercase"><span>24 jam lalu</span><span>Sekarang</span></div>
+          <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-2">Raw Data Health</h3><p class="text-on-surface-variant mb-6">Dari tab CAPHAND dan PUTAWAY hasil sync Superset.</p>
+            <div class="grid grid-cols-2 gap-4">${miniMetric("CAPHAND Rows", s.caphand?.rows || 0, "text-primary")}${miniMetric("PUTAWAY Rows", s.putaway?.rows || 0, "text-secondary")}${miniMetric("PO Unique", s.caphand?.unique_po || 0, "text-primary")}${miniMetric("Putaway Done %", (s.putaway?.completed_pct || 0) + "%", "text-success")}</div>
           </div>
-          <div class="glass-card rounded-xl p-6">
-            <h3 class="font-headline-md text-headline-md mb-4">Bottleneck</h3>
-            ${bottleneck("IB-018", "Dokumen belum lengkap", "1j 48m", "text-error")}
-            ${bottleneck("IB-024", "Menunggu dock kosong", "54m", "text-tertiary")}
-            ${bottleneck("IB-031", "Chiller penuh", "48m", "text-tertiary")}
+          <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Bottleneck</h3>
+            ${bottleneck("Putaway Pending", s.putaway?.pending || 0, "Dari tab PUTAWAY status PENDING", "text-warning")}
+            ${bottleneck("Late CAPHAND", s.caphand?.late_rows || 0, "Dari lateness_status = Late", "text-error")}
+            ${bottleneck("SLA Miss", s.checker?.sla_miss || 0, "Dari Checker Input UNLOAD SLA", "text-error")}
           </div>
         </div>`;
       }
 
-      function bottleneck(id, reason, time, color) {
-        return `<div class="bg-surface-container-high/50 p-4 rounded-lg border-l-4 border-current ${color} mb-3">
-        <div class="flex justify-between"><span class="font-queue-id text-on-surface">${id}</span><span class="font-queue-id ${color}">${time}</span></div>
-        <p class="text-[12px] text-on-surface-variant mt-1">${reason}</p>
-      </div>`;
-      }
-
       function pageLaporan() {
-        return `
-        <div class="glass-card rounded-xl p-6">
-          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-            <div>
-              <h3 class="font-headline-md text-headline-md">Laporan Antrian</h3>
-              <p class="text-on-surface-variant">Rekap nomor, waktu tunggu, dock, dan status.</p>
-            </div>
-            <button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">download</span>Export CSV</button>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            ${selectField("Tanggal", ["Hari Ini", "Kemarin", "7 Hari"])}
-            ${selectField("Status", ["Semua", "Menunggu", "Di Dock", "Selesai", "Hold"])}
-            ${selectField("Dock", ["Semua", "Dock 01", "Dock 02", "Dock 03"])}
-            ${selectField("Prioritas", ["Semua", "Normal", "High", "VIP"])}
-          </div>
-          ${queueTable()}
+        const rows = state.dashboard?.report_preview || [];
+        return `<div class="glass-card rounded-xl p-6">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6"><div><h3 class="font-headline-md text-headline-md">Laporan Antrian</h3><p class="text-on-surface-variant">Rekap ticket dari Security + Checker.</p></div><div class="flex gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div></div>
+          ${reportTable(rows)}
         </div>`;
       }
 
       function pageSetting() {
-        return `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
-          <div class="glass-card rounded-xl p-6">
-            <h3 class="font-headline-md text-headline-md mb-4">Setting SLA</h3>
-            ${inputField("SLA Tunggu (menit)", "30")}
-            <div class="h-4"></div>
-            ${inputField("SLA Bongkar (menit)", "120")}
-            <button onclick="showToast('Setting disimpan')" class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Simpan</button>
+        return `<div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
+          <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">API Setup</h3>
+            <p class="text-on-surface-variant mb-4">Edit file HTML, ganti konstanta <b>API_URL</b> dengan URL Web App GAS.</p>
+            <pre class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-x-auto">const API_URL = "${esc(API_URL)}";</pre>
+            <button onclick="initApi()" class="mt-4 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Test API</button>
           </div>
-          <div class="glass-card rounded-xl p-6">
-            <h3 class="font-headline-md text-headline-md mb-4">Master Dock</h3>
-            ${["Dock 01", "Dock 02", "Dock 03", "Dock 04", "Dock 05", "Chiller 01"].map((d) => `<div class="flex justify-between py-3 border-b border-outline-variant/30"><span>${d}</span><span class="text-primary font-bold">Aktif</span></div>`).join("")}
+          <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Endpoint Cepat</h3>
+            ${["health", "schema", "dashboard", "debug", "report", "options"].map((a) => `<button onclick="openApi('${a}')" class="thin-tab rounded-lg px-4 py-2 mr-2 mb-2">${a}</button>`).join("")}
+            <p class="text-on-surface-variant text-sm mt-3">Kalau API URL sudah benar, tombol ini buka endpoint di tab baru.</p>
           </div>
         </div>`;
       }
 
-      function pageBantuan() {
-        return `
-        <div class="glass-card rounded-xl p-6 max-w-4xl">
-          <h3 class="font-headline-md text-headline-md mb-4">Cara Pakai Singkat</h3>
-          <div class="space-y-4 text-on-surface-variant">
-            <p><b class="text-on-surface">1. Daftar:</b> input driver/supplier lalu buat nomor.</p>
-            <p><b class="text-on-surface">2. Antrian:</b> pantau urutan driver dan klik panggil berikutnya.</p>
-            <p><b class="text-on-surface">3. Panggil:</b> buka di TV/display supaya driver lihat nomor dan dock.</p>
-            <p><b class="text-on-surface">4. Dock:</b> cek dock kosong atau sedang proses.</p>
-            <p><b class="text-on-surface">5. Laporan:</b> export rekap harian.</p>
-          </div>
+      function pageDebug() {
+        return `<div class="glass-card rounded-xl p-6">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4"><div><h3 class="font-headline-md text-headline-md">Debug API</h3><p class="text-on-surface-variant">Cek schema, sample row, dan hasil agregasi.</p></div><button onclick="loadDebug()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">bug_report</span>Run Debug</button></div>
+          <pre id="debug-output" class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-auto max-h-[650px]">${esc(JSON.stringify(state.debug || { info: "Klik Run Debug" }, null, 2))}</pre>
         </div>`;
       }
 
-      function renderPage(page) {
+      function textInput(name, label, placeholder, list, value = "") {
+        return `<label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">${label}</span><input name="${name}" ${list ? `list="${list}"` : ""} class="form-input" placeholder="${placeholder || ""}" value="${esc(value || "")}" /></label>`;
+      }
+      function selectInput(name, label, options = [], value = "") {
+        return `<label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">${label}</span><select name="${name}" class="form-select">${(options || []).map((o) => `<option ${String(o) === String(value) ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></label>`;
+      }
+      function datalists() {
+        return `<datalist id="vendor-list">${(state.options.vendor_name || [])
+          .slice(0, 500)
+          .map((v) => `<option value="${esc(v)}"></option>`)
+          .join("")}</datalist><datalist id="po-list">${(
+          state.options.po_number || []
+        )
+          .slice(0, 1000)
+          .map((v) => `<option value="${esc(v)}"></option>`)
+          .join("")}</datalist>`;
+      }
+      function miniMetric(label, value, color) {
+        return `<div class="p-4 rounded-lg bg-surface-container/50 border border-outline-variant/30"><span class="text-[10px] text-on-surface-variant uppercase font-bold">${esc(label)}</span><div class="text-xl font-bold ${color}">${esc(value)}</div></div>`;
+      }
+      function priorityItem(r) {
+        return `<div class="p-4 rounded-lg bg-surface-container/30 border border-outline-variant/30 flex justify-between items-center group hover:bg-primary/10 transition-colors cursor-pointer"><div class="flex flex-col"><span class="font-queue-id text-primary">${esc(r.queue_no || "-")}</span><span class="text-[10px] font-bold text-on-surface-variant uppercase">${esc(r.vendor_name || r.note || "-")}</span></div><div class="text-right"><span class="font-label-sm block">${esc(r.gate || "-")}</span><span class="text-[10px] text-on-surface-variant">${esc(r.status || "-")}</span></div></div>`;
+      }
+      function queueTable() {
+        const rows = state.dashboard?.queue || [];
+        return `<div class="glass-card rounded-xl overflow-hidden border border-outline-variant/30">
+          <div class="p-6 border-b border-outline-variant/30 flex flex-col md:flex-row md:justify-between md:items-center gap-4"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">stream</span><h3 class="font-headline-md text-headline-md">Data Antrian</h3></div><input id="queue-search" oninput="filterTable('queue-table',this.value)" class="form-input md:max-w-xs" placeholder="Cari antrian / plat / vendor..." type="text"/></div>
+          <div class="overflow-x-auto"><table id="queue-table" class="w-full text-left"><thead class="bg-surface-container text-on-surface-variant"><tr>${["No. Antrian", "Vendor", "Plat", "PO", "Status", "Gate", "Qty", "SKU"].map((h) => `<th class="px-6 py-4 font-label-sm uppercase tracking-wider">${h}</th>`).join("")}</tr></thead><tbody class="divide-y divide-outline-variant/10">${rows.map(queueRow).join("") || `<tr><td colspan="8" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data.</td></tr>`}</tbody></table></div>
+        </div>`;
+      }
+      function queueRow(q) {
+        const st = String(q.status || "").toUpperCase();
+        const color = st.includes("WAIT")
+          ? "text-tertiary bg-tertiary/20 border-tertiary/30"
+          : st.includes("COMP") || st.includes("DONE")
+            ? "text-success bg-success/10 border-success/30"
+            : st.includes("HOLD") || st.includes("MISS")
+              ? "text-error bg-error/10 border-error/30"
+              : "text-primary bg-primary/20 border-primary/30";
+        return `<tr class="hover:bg-primary/5 transition-colors"><td class="px-6 py-4 font-queue-id text-primary">${esc(q.queue_no || "-")}</td><td class="px-6 py-4">${esc(q.vendor_name || "-")}</td><td class="px-6 py-4 font-queue-id text-sm">${esc(q.plat_number || "-")}</td><td class="px-6 py-4 text-sm">${esc(q.po_number || "-")}</td><td class="px-6 py-4"><span class="px-3 py-1 rounded-full text-[10px] font-bold ${color} border">${esc(st || "-")}</span></td><td class="px-6 py-4">${esc(q.gate || "-")}</td><td class="px-6 py-4">${num(q.total_po_qty || 0)}</td><td class="px-6 py-4">${num(q.count_po_sku || 0)}</td></tr>`;
+      }
+      function dockCard(d) {
+        const st = String(d.status || "KOSONG").toUpperCase();
+        const cls = st.includes("KOSONG")
+          ? "border-2 border-dashed border-outline-variant text-on-surface-variant"
+          : st.includes("WARN") || st.includes("HOLD") || st.includes("MISS")
+            ? "bg-error-container text-on-error-container border-2 border-error status-pulse"
+            : "bg-primary-container text-on-primary-container";
+        return `<div class="rounded-xl p-5 ${cls} min-h-[140px] flex flex-col justify-between hover:-translate-y-1 transition-transform"><div class="font-headline-md text-xl font-bold">${esc(d.gate || "-")}</div><div><div class="font-label-sm text-label-sm uppercase opacity-80">${esc(st)}</div><div class="font-queue-id mt-1">${esc(d.queue_no || d.plat_number || "-")}</div></div></div>`;
+      }
+      function bottleneck(title, value, note, color) {
+        return `<div class="bg-surface-container-high/50 p-4 rounded-lg border-l-4 border-current ${color} mb-3"><div class="flex justify-between"><span class="font-bold text-on-surface">${esc(title)}</span><span class="font-queue-id ${color}">${esc(value)}</span></div><p class="text-[12px] text-on-surface-variant mt-1">${esc(note)}</p></div>`;
+      }
+      function reportTable(rows) {
+        return `<div class="overflow-x-auto"><table id="report-table" class="w-full text-left"><thead class="bg-surface-container text-on-surface-variant"><tr>${["Source", "Created", "Queue", "Vendor", "Fleet", "Plat", "PO", "Gate", "Status", "Qty", "SKU", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr></thead><tbody class="divide-y divide-outline-variant/10">${rows.map((r) => `<tr class="hover:bg-primary/5">${["source", "created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status", "total_po_qty", "count_po_sku", "unload_sla"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="12" class="px-6 py-8 text-center text-on-surface-variant">Belum ada report.</td></tr>`}</tbody></table></div>`;
+      }
+      function emptyBox(t) {
+        return `<div class="p-6 rounded-lg border border-outline-variant text-on-surface-variant text-center">${esc(t)}</div>`;
+      }
+
+      function renderPage(page, toast = true) {
         const root = document.getElementById("page-root");
         const map = {
           daftar: pageDaftar,
+          checker: pageChecker,
           antrian: pageAntrian,
           panggil: pagePanggil,
           dock: pageDock,
           monitor: pageMonitor,
           laporan: pageLaporan,
           setting: pageSetting,
-          bantuan: pageBantuan,
+          debug: pageDebug,
         };
-        const safePage = map[page] ? page : "antrian";
-        state.page = safePage;
-        const meta = pageMeta[safePage];
-        document.getElementById("page-title").textContent = meta.title;
-        document.getElementById("page-subtitle").textContent = meta.subtitle;
-        root.innerHTML = map[safePage]();
-        updateActiveNav(safePage);
-        history.replaceState(null, "", "#" + safePage);
+        const safe = map[page] ? page : "daftar";
+        state.page = safe;
+        document.getElementById("page-title").textContent =
+          pageMeta[safe].title;
+        document.getElementById("page-subtitle").textContent =
+          pageMeta[safe].subtitle;
+        root.innerHTML = map[safe]();
+        updateActiveNav(safe);
+        history.replaceState(null, "", "#" + safe);
+        if (toast) showToast("Buka menu " + pageMeta[safe].title);
       }
-
       function updateActiveNav(page) {
         document.querySelectorAll(".nav-btn").forEach((btn) => {
-          const isActive = btn.dataset.page === page;
-          btn.className = isActive ? navActive : navBase;
+          const on = btn.dataset.page === page;
+          btn.className = on ? navActive : navBase;
           const icon = btn.querySelector(".material-symbols-outlined");
           const label = btn.querySelector(
             "span:not(.material-symbols-outlined)",
           );
           if (icon)
-            icon.style.fontVariationSettings = isActive
-              ? "'FILL' 1"
-              : "'FILL' 0";
+            icon.style.fontVariationSettings = on ? "'FILL' 1" : "'FILL' 0";
           if (label)
-            label.className = isActive
+            label.className = on
               ? "font-label-sm text-label-sm font-bold"
               : "font-label-sm text-label-sm";
         });
@@ -912,90 +873,186 @@
           btn.className = btn.dataset.page === page ? mobActive : mobBase;
         });
       }
-
       function switchPage(page) {
         renderPage(page);
-        showToast("Buka menu " + pageMeta[page].title);
       }
 
-      function applyTheme(mode, withToast = true) {
-        const html = document.documentElement;
-        const icon = document.getElementById("theme-icon");
-        const safeMode = mode === "light" ? "light" : "dark";
-        html.classList.toggle("light", safeMode === "light");
-        html.classList.toggle("dark", safeMode === "dark");
-        if (icon)
-          icon.innerText = safeMode === "light" ? "light_mode" : "dark_mode";
-        localStorage.setItem("inboundQueueTheme", safeMode);
-        if (withToast)
-          showToast(
-            safeMode === "light" ? "Light mode aktif" : "Dark mode aktif",
-          );
-      }
-
-      function initTheme() {
-        applyTheme(localStorage.getItem("inboundQueueTheme") || "dark", false);
-      }
-
-      function toggleTheme() {
-        const isDark = document.documentElement.classList.contains("dark");
-        applyTheme(isDark ? "light" : "dark");
-      }
-
-      function callNext(btn) {
-        if (btn) btn.classList.add("calling-effect");
-        const next =
-          state.queue.find(
-            (q) => q.status === "MENUNGGU" || q.status === "PRIORITAS",
-          ) || state.queue[0];
-        if (next) {
-          next.status = "DI DOCK";
-          next.dock = next.dock === "-" ? "Dock 04" : next.dock;
-          state.lastCalled = {
-            queue: next.id,
-            dock: next.dock,
-            driver: next.driver,
-          };
+      async function refreshDashboard() {
+        if (!hasApi()) {
+          showToast("API_URL belum diset. Masih pakai dummy.");
+          return;
         }
-        showToast(
-          `Memanggil ${state.lastCalled.queue} ke ${state.lastCalled.dock}`,
-        );
-        setTimeout(() => {
+        try {
+          state.dashboard = await apiGet("dashboard");
+          state.options = state.dashboard.options || state.options;
+          showToast("Dashboard refresh");
+          renderPage(state.page, false);
+          updateApiPill("on", "API live");
+        } catch (err) {
+          updateApiPill("error", "API error");
+          showToast("Refresh gagal: " + err.message);
+        }
+      }
+      async function lookupPo() {
+        const f = document.getElementById("security-form");
+        const fd = new FormData(f);
+        const po = fd.get("po_number");
+        const vendor = fd.get("vendor_name");
+        if (!po && !vendor) {
+          showToast("Isi PO Number atau Vendor dulu.");
+          return;
+        }
+        if (!hasApi()) {
+          state.poLookup = {
+            summary: {
+              po_number: po,
+              vendor_name: vendor,
+              total_po_qty: 123,
+              count_po_sku: 7,
+            },
+          };
+          renderPage("daftar", false);
+          showToast("Lookup dummy aktif");
+          return;
+        }
+        try {
+          state.poLookup = await apiGet("lookupPo", {
+            po_number: po,
+            vendor_name: vendor,
+          });
+          renderPage("daftar", false);
+          showToast(state.poLookup.found ? "PO ditemukan" : "PO tidak ketemu");
+        } catch (err) {
+          showToast("Lookup gagal: " + err.message);
+        }
+      }
+      async function submitSecurity(e) {
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(e.target).entries());
+        body.total_po_qty =
+          state.poLookup?.summary?.total_po_qty ||
+          document.getElementById("security-total-qty")?.textContent ||
+          0;
+        body.count_po_sku =
+          state.poLookup?.summary?.count_po_sku ||
+          document.getElementById("security-count-sku")?.textContent ||
+          0;
+        if (!hasApi()) {
+          const id =
+            "IB-" +
+            String(Math.floor(Math.random() * 900) + 100).padStart(3, "0");
+          state.lastCalled = {
+            queue_no: id,
+            gate: "-",
+            vendor_name: body.vendor_name,
+          };
+          document.getElementById("new-queue-number").textContent = id;
+          showToast("Dummy: nomor " + id + " dibuat");
+          return;
+        }
+        try {
+          const res = await apiPost("securityRegister", body);
+          state.lastCalled = res.ticket;
+          document.getElementById("new-queue-number").textContent =
+            res.queue_no;
+          showToast("Nomor " + res.queue_no + " dibuat");
+          await refreshDashboard();
+        } catch (err) {
+          showToast("Submit gagal: " + err.message);
+        }
+      }
+      async function submitChecker(e) {
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(e.target).entries());
+        if (!hasApi()) {
+          showToast("Dummy: checker tersimpan");
+          return;
+        }
+        try {
+          const res = await apiPost("checkerSubmit", body);
+          showToast(res.message || "Checker tersimpan");
+          await refreshDashboard();
+        } catch (err) {
+          showToast("Submit gagal: " + err.message);
+        }
+      }
+      async function callNext(btn) {
+        const gate = document.getElementById("call-gate")?.value || "Dock 01";
+        if (btn) btn.classList.add("calling-effect");
+        if (!hasApi()) {
+          const q = (state.dashboard.queue || [])[0] || {
+            queue_no: "IB-999",
+            vendor_name: "Dummy Vendor",
+          };
+          state.lastCalled = { ...q, gate };
+          showToast("Dummy panggil " + state.lastCalled.queue_no);
+          setTimeout(() => {
+            if (btn) btn.classList.remove("calling-effect");
+            renderPage(state.page, false);
+          }, 450);
+          return;
+        }
+        try {
+          const res = await apiPost("callNext", { gate });
+          if (res.ticket) {
+            state.lastCalled = res.ticket;
+            showToast(
+              "Memanggil " +
+                res.ticket.queue_no +
+                " ke " +
+                (res.ticket.gate || gate),
+            );
+          } else {
+            showToast(res.message);
+          }
+          await refreshDashboard();
+        } catch (err) {
+          showToast("Call gagal: " + err.message);
+        } finally {
           if (btn) btn.classList.remove("calling-effect");
-          if (state.page === "panggil") renderPage("panggil");
-          if (state.page === "antrian") renderPage("antrian");
-        }, 450);
+        }
       }
-
       function recall() {
-        showToast(`Panggil ulang ${state.lastCalled.queue}`);
+        showToast("Panggil ulang " + (state.lastCalled.queue_no || "IB-000"));
       }
-
-      function generateQueue() {
-        const num = Math.floor(28 + Math.random() * 70);
-        const id = "IB-" + String(num).padStart(3, "0");
-        document.getElementById("new-queue-number").textContent = id;
-        state.queue.unshift({
-          id,
-          status: "MENUNGGU",
-          dock: "-",
-          wait: "00:00",
-          driver: "Driver Baru",
-          supplier: "Supplier Baru",
-          priority: "Normal",
-        });
-        showToast(`Nomor ${id} dibuat`);
+      async function loadDebug() {
+        const out = document.getElementById("debug-output");
+        out.textContent = "Loading debug...";
+        if (!hasApi()) {
+          out.textContent = JSON.stringify(
+            { error: "API_URL belum diganti", demo: state.dashboard },
+            null,
+            2,
+          );
+          return;
+        }
+        try {
+          state.debug = await apiGet("debug");
+          out.textContent = JSON.stringify(state.debug, null, 2);
+          showToast("Debug selesai");
+        } catch (err) {
+          out.textContent = err.stack || err.message;
+          showToast("Debug gagal");
+        }
       }
-
+      function openApi(action) {
+        if (!hasApi()) {
+          showToast("API_URL belum diset");
+          return;
+        }
+        window.open(apiUrl(action), "_blank");
+      }
       function exportCsv() {
-        const header = "queue_id,status,dock,wait_time,driver,supplier\n";
-        const rows = state.queue
-          .map(
-            (q) =>
-              `${q.id},${q.status},${q.dock},${q.wait},${q.driver},${q.supplier}`,
-          )
+        const rows = state.dashboard?.report_preview || [];
+        if (!rows.length) {
+          showToast("Data kosong");
+          return;
+        }
+        const headers = Object.keys(rows[0]);
+        const csv = [headers.join(",")]
+          .concat(rows.map((r) => headers.map((h) => csvSafe(r[h])).join(",")))
           .join("\n");
-        const blob = new Blob([header + rows], { type: "text/csv" });
+        const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -1004,22 +1061,154 @@
         URL.revokeObjectURL(url);
         showToast("CSV didownload");
       }
+      function filterTable(tableId, q) {
+        q = String(q || "").toLowerCase();
+        document.querySelectorAll(`#${tableId} tbody tr`).forEach((tr) => {
+          tr.style.display = tr.textContent.toLowerCase().includes(q)
+            ? ""
+            : "none";
+        });
+      }
 
+      function applyTheme(mode, withToast = true) {
+        const html = document.documentElement;
+        const icon = document.getElementById("theme-icon");
+        const safe = mode === "light" ? "light" : "dark";
+        html.classList.toggle("light", safe === "light");
+        html.classList.toggle("dark", safe === "dark");
+        if (icon)
+          icon.innerText = safe === "light" ? "light_mode" : "dark_mode";
+        localStorage.setItem("inboundQueueTheme", safe);
+        if (withToast)
+          showToast(safe === "light" ? "Light mode aktif" : "Dark mode aktif");
+      }
+      function initTheme() {
+        applyTheme(localStorage.getItem("inboundQueueTheme") || "light", false);
+      }
+      function toggleTheme() {
+        applyTheme(
+          document.documentElement.classList.contains("dark")
+            ? "light"
+            : "dark",
+        );
+      }
+      function tickClock() {
+        const clock = document.getElementById("live-clock");
+        if (clock) clock.textContent = new Date().toLocaleTimeString("id-ID");
+      }
       function showToast(msg) {
         const toast = document.getElementById("toast");
-        const message = document.getElementById("toast-message");
-        message.innerText = msg;
+        document.getElementById("toast-message").innerText = msg;
         toast.classList.remove("opacity-0", "translate-y-10");
         toast.classList.add("opacity-100", "translate-y-0");
         setTimeout(() => {
           toast.classList.add("opacity-0", "translate-y-10");
           toast.classList.remove("opacity-100", "translate-y-0");
-        }, 2300);
+        }, 2500);
+      }
+      function esc(v) {
+        return String(v ?? "").replace(
+          /[&<>"']/g,
+          (m) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[m],
+        );
+      }
+      function num(v) {
+        return Number(v || 0).toLocaleString("id-ID");
+      }
+      function csvSafe(v) {
+        const s = String(v ?? "");
+        return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
       }
 
-      function tickClock() {
-        const clock = document.getElementById("live-clock");
-        if (clock) clock.textContent = new Date().toLocaleTimeString("id-ID");
+      function demoDashboard() {
+        return {
+          kpis: [
+            {
+              label: "Total Antrian",
+              display_value: "0",
+              icon: "confirmation_number",
+              color: "primary",
+              source: "demo",
+              metric: "count_all",
+            },
+            {
+              label: "Menunggu",
+              display_value: "0",
+              icon: "schedule",
+              color: "tertiary",
+              source: "demo",
+              metric: "waiting",
+            },
+            {
+              label: "PO Hari Ini",
+              display_value: "0",
+              icon: "inventory_2",
+              color: "primary",
+              source: "demo",
+              metric: "unique_po",
+            },
+            {
+              label: "SKU CAPHAND",
+              display_value: "0",
+              icon: "barcode_scanner",
+              color: "secondary",
+              source: "demo",
+              metric: "unique_sku",
+            },
+            {
+              label: "Putaway Pending",
+              display_value: "0",
+              icon: "pending_actions",
+              color: "warning",
+              source: "demo",
+              metric: "pending",
+            },
+            {
+              label: "SLA OK",
+              display_value: "0%",
+              icon: "verified",
+              color: "success",
+              source: "demo",
+              metric: "sla_ok_pct",
+            },
+          ],
+          summary: {
+            ticket: {
+              count_waiting: 0,
+              count_called: 0,
+              count_on_dock: 0,
+              count_completed: 0,
+            },
+            checker: {
+              on_process: 0,
+              completed: 0,
+              sla_ok_pct: 0,
+              sla_miss: 0,
+            },
+            caphand: { rows: 0, unique_po: 0, late_rows: 0 },
+            putaway: { rows: 0, pending: 0, completed_pct: 0 },
+          },
+          queue: [],
+          priority: [],
+          dock: [
+            "Dock 01",
+            "Dock 02",
+            "Dock 03",
+            "Dock 04",
+            "Dock 05",
+            "Dock 06",
+            "Chiller 01",
+            "Chiller 02",
+          ].map((g) => ({ gate: g, status: "KOSONG" })),
+          report_preview: [],
+        };
       }
 
       function initShader() {
@@ -1027,7 +1216,7 @@
         const gl =
           canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
         if (!gl) return;
-        function syncSize() {
+        function sync() {
           const w = canvas.clientWidth || 1280,
             h = canvas.clientHeight || 720;
           if (canvas.width !== w || canvas.height !== h) {
@@ -1036,45 +1225,19 @@
           }
         }
         if (typeof ResizeObserver !== "undefined")
-          new ResizeObserver(syncSize).observe(canvas);
-        syncSize();
-
-        const vs = `attribute vec2 a_position; varying vec2 v_texCoord; void main(){ v_texCoord=a_position*0.5+0.5; gl_Position=vec4(a_position,0.0,1.0); }`;
-        const fs = `precision highp float; uniform float u_time; uniform vec2 u_resolution; varying vec2 v_texCoord;
-        float sdRoundRect(vec2 p, vec2 b, float r){ vec2 d=abs(p)-b+r; return min(max(d.x,d.y),0.0)+length(max(d,0.0))-r; }
-        void main(){
-          vec2 uv=v_texCoord; vec2 p=(uv*2.0-1.0); p.x*=u_resolution.x/u_resolution.y;
-          float d=length(p);
-          vec3 bg=mix(vec3(0.03,0.08,0.15),vec3(0.01,0.02,0.05),d);
-          float logo=0.0;
-          for(float i=0.0;i<3.0;i++){
-            float t=u_time*(0.5+i*0.2);
-            vec2 off=vec2(sin(t+i),cos(t*0.8+i))*0.4;
-            vec2 lp=p-off;
-            float a=t*0.5;
-            lp=mat2(cos(a),-sin(a),sin(a),cos(a))*lp;
-            float box=sdRoundRect(lp,vec2(0.15,0.15),0.02);
-            logo+=0.01/abs(box+0.01*sin(u_time*2.0+i));
-          }
-          vec3 finalColor=bg+vec3(0.15,0.4,0.9)*logo;
-          float stream=0.0;
-          for(float i=0.0;i<5.0;i++){
-            float row=fract(uv.y+u_time*(0.1+i*0.05)+i*0.2);
-            float line=smoothstep(0.01,0.0,abs(row-0.5));
-            stream+=line*0.1*(0.5+0.5*sin(uv.x*10.0+u_time));
-          }
-          finalColor+=vec3(0.4,0.6,1.0)*stream;
-          gl_FragColor=vec4(finalColor,1.0);
-        }`;
-        function shader(type, src) {
+          new ResizeObserver(sync).observe(canvas);
+        sync();
+        const vs = `attribute vec2 a_position;varying vec2 v_texCoord;void main(){v_texCoord=a_position*0.5+0.5;gl_Position=vec4(a_position,0.0,1.0);}`;
+        const fs = `precision highp float;uniform float u_time;uniform vec2 u_resolution;varying vec2 v_texCoord;float sdRoundRect(vec2 p,vec2 b,float r){vec2 d=abs(p)-b+r;return min(max(d.x,d.y),0.0)+length(max(d,0.0))-r;}void main(){vec2 uv=v_texCoord;vec2 p=(uv*2.0-1.0);p.x*=u_resolution.x/u_resolution.y;float d=length(p);vec3 bg=mix(vec3(0.03,0.08,0.15),vec3(0.01,0.02,0.05),d);float logo=0.0;for(float i=0.0;i<3.0;i++){float t=u_time*(0.5+i*0.2);vec2 off=vec2(sin(t+i),cos(t*0.8+i))*0.4;vec2 lp=p-off;float a=t*0.5;lp=mat2(cos(a),-sin(a),sin(a),cos(a))*lp;float box=sdRoundRect(lp,vec2(0.15,0.15),0.02);logo+=0.01/abs(box+0.01*sin(u_time*2.0+i));}vec3 finalColor=bg+vec3(0.15,0.4,0.9)*logo;float stream=0.0;for(float i=0.0;i<5.0;i++){float row=fract(uv.y+u_time*(0.1+i*0.05)+i*0.2);float line=smoothstep(0.01,0.0,abs(row-0.5));stream+=line*0.1*(0.5+0.5*sin(uv.x*10.0+u_time));}finalColor+=vec3(0.4,0.6,1.0)*stream;gl_FragColor=vec4(finalColor,1.0);}`;
+        function sh(type, src) {
           const s = gl.createShader(type);
           gl.shaderSource(s, src);
           gl.compileShader(s);
           return s;
         }
         const prog = gl.createProgram();
-        gl.attachShader(prog, shader(gl.VERTEX_SHADER, vs));
-        gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fs));
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
         gl.linkProgram(prog);
         gl.useProgram(prog);
         const buf = gl.createBuffer();
@@ -1087,10 +1250,10 @@
         const pos = gl.getAttribLocation(prog, "a_position");
         gl.enableVertexAttribArray(pos);
         gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
-        const uTime = gl.getUniformLocation(prog, "u_time");
-        const uRes = gl.getUniformLocation(prog, "u_resolution");
+        const uTime = gl.getUniformLocation(prog, "u_time"),
+          uRes = gl.getUniformLocation(prog, "u_resolution");
         function render(t) {
-          if (typeof ResizeObserver === "undefined") syncSize();
+          if (typeof ResizeObserver === "undefined") sync();
           gl.viewport(0, 0, canvas.width, canvas.height);
           gl.uniform1f(uTime, t * 0.001);
           gl.uniform2f(uRes, canvas.width, canvas.height);
@@ -1104,16 +1267,15 @@
         const btn = e.target.closest("[data-page]");
         if (btn) switchPage(btn.dataset.page);
       });
-
       window.addEventListener("hashchange", () =>
-        renderPage((location.hash || "#antrian").replace("#", "")),
+        renderPage((location.hash || "#daftar").replace("#", ""), false),
       );
-
       initTheme();
       setInterval(tickClock, 1000);
       tickClock();
       initShader();
-      renderPage((location.hash || "#antrian").replace("#", ""));
+      renderPage((location.hash || "#daftar").replace("#", ""), false);
+      initApi();
     </script>
   </body>
 </html>
