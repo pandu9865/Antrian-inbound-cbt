@@ -473,7 +473,7 @@ function parsePoNumbers(value) {
   return [
     ...new Set(
       String(value || "")
-        .split(",")
+        .split(/[,\n;]+/)
         .map((x) => x.trim())
         .filter(Boolean),
     ),
@@ -552,6 +552,11 @@ function updatePoLookupUi(lookup) {
   const sku = document.getElementById("security-count-sku");
   if (total) total.textContent = num(lookup?.summary?.total_po_qty || 0);
   if (sku) sku.textContent = num(lookup?.summary?.count_po_sku || 0);
+
+  if (typeof renderPoSelectedChips === "function") {
+    renderPoSelectedChips(parsePoNumbers(form.po_number?.value || ""));
+  }
+  if (typeof filterPoDropdown === "function") filterPoDropdown();
 
   const box = document.getElementById("po-lookup-summary");
   if (box && typeof renderPoLookupSummary === "function") {

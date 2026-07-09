@@ -171,8 +171,8 @@ function pageDaftar() {
       </div>
       <form id="security-form" onsubmit="submitSecurity(event)">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${textInput("po_number", "PO Number", "PO1, PO2, PO3", "po-list", lookup?.summary?.po_number, 'required oninput="schedulePoLookup()" onblur="lookupPo(true)" autocomplete="off"')}
-          ${textInput("vendor_name", "Vendor Name", "Auto dari PO", "vendor-list", lookup?.summary?.vendor_name, "required")}
+          ${poMultiSelectInput(lookup?.summary?.po_number || "")}
+          ${textInput("vendor_name", "Vendor Name", "Auto dari PO terpilih", "vendor-list", lookup?.summary?.vendor_name, "required readonly")}
           ${selectInput("ticket_type", "Tipe Tiket", ["REG", "VIP", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
           ${selectInput("slot", "Slot", buildSlotOptions(lookup?.summary?.slot), lookup?.summary?.slot || "3", "required")}
           ${selectInput("fleet_type", "Fleet Type", o.fleet_type, "", "required")}
@@ -432,6 +432,196 @@ function buildSlotOptions(preferred) {
   return val && !base.includes(val) ? [val].concat(base) : base;
 }
 
+function parsePoInputText(value) {
+  if (typeof parsePoNumbers === "function") return parsePoNumbers(value);
+  return [
+    ...new Set(
+      String(value || "")
+        .split(/[,\n;]+/)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function poEncode(value) {
+  return encodeURIComponent(String(value || ""));
+}
+
+function poDecode(value) {
+  try {
+    return decodeURIComponent(String(value || ""));
+  } catch (err) {
+    return String(value || "");
+  }
+}
+
+function getSelectedPoNumbers() {
+  const form = document.getElementById("security-form");
+  return parsePoInputText(form?.po_number?.value || "");
+}
+
+function setSelectedPoNumbers(values, runLookup = true) {
+  const form = document.getElementById("security-form");
+  if (!form || !form.po_number) return;
+  const clean = [
+    ...new Set(
+      (values || []).map((x) => String(x || "").trim()).filter(Boolean),
+    ),
+  ];
+  form.po_number.value = clean.join(", ");
+  renderPoSelectedChips(clean);
+  filterPoDropdown();
+  if (runLookup && typeof lookupPo === "function") lookupPo(true);
+}
+
+function renderPoSelectedChips(values) {
+  const target = document.getElementById("po-selected-chips");
+  if (!target) return;
+  const selected = values || [];
+  target.innerHTML = selected.length
+    ? selected
+        .map(
+          (
+            po,
+          ) => `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/25 text-primary px-2 py-1 text-[11px] font-extrabold">
+            ${esc(po)}
+            <button type="button" class="w-5 h-5 rounded-full bg-primary/10 hover:bg-primary/20 leading-none" onclick="event.stopPropagation(); removePoChoice('${poEncode(po)}')" title="Hapus PO">×</button>
+          </span>`,
+        )
+        .join("")
+    : `<span class="text-[12px] text-on-surface-variant px-1">Belum ada PO dipilih</span>`;
+}
+
+function getFilteredPoOptions() {
+  const q = normalizeKey(
+    document.getElementById("po-search-input")?.value || "",
+  );
+  const selected = new Set(getSelectedPoNumbers().map((x) => normalizeKey(x)));
+  return (state.options.po_number || [])
+    .filter((po) => {
+      const key = normalizeKey(po);
+      if (!key || selected.has(key)) return false;
+      return !q || key.includes(q);
+    })
+    .slice(0, 120);
+}
+
+function filterPoDropdown() {
+  const list = document.getElementById("po-dropdown-list");
+  if (!list) return;
+  const options = getFilteredPoOptions();
+  const q = String(
+    document.getElementById("po-search-input")?.value || "",
+  ).trim();
+  if (!options.length) {
+    list.innerHTML = `<div class="px-3 py-3 text-[12px] text-on-surface-variant">${q ? "PO tidak ada di list. Klik Tambah untuk input manual; saat submit tetap divalidasi ke Data V2." : "Ketik PO untuk cari dari Data V2."}</div>`;
+    return;
+  }
+  list.innerHTML = options
+    .map((po) => {
+      const meta =
+        typeof v2PoIndex !== "undefined" ? v2PoIndex?.[normalizeKey(po)] : null;
+      const vendor = meta?.vendor_name
+        ? `<span class="text-[10px] text-on-surface-variant font-bold truncate">${esc(meta.vendor_name)}</span>`
+        : "";
+      return `<button type="button" onclick="selectPoChoice('${poEncode(po)}')" class="w-full px-3 py-2 rounded-lg hover:bg-primary/10 text-left flex items-center justify-between gap-3">
+        <span class="font-queue-id text-[12px] text-on-surface">${esc(po)}</span>${vendor}
+      </button>`;
+    })
+    .join("");
+}
+
+function addPoChoice(value) {
+  const incoming = parsePoInputText(value);
+  if (!incoming.length) return;
+  setSelectedPoNumbers(getSelectedPoNumbers().concat(incoming), true);
+  const input = document.getElementById("po-search-input");
+  if (input) input.value = "";
+  filterPoDropdown();
+}
+
+function selectPoChoice(encodedPo) {
+  addPoChoice(poDecode(encodedPo));
+  const input = document.getElementById("po-search-input");
+  if (input) input.focus();
+}
+
+function removePoChoice(encodedPo) {
+  const key = normalizeKey(poDecode(encodedPo));
+  setSelectedPoNumbers(
+    getSelectedPoNumbers().filter((po) => normalizeKey(po) !== key),
+    true,
+  );
+}
+
+function addPoFromSearch() {
+  addPoChoice(document.getElementById("po-search-input")?.value || "");
+}
+
+function handlePoSearchInput(input) {
+  const value = String(input?.value || "");
+  if (/[,\n;]/.test(value)) addPoChoice(value);
+  else filterPoDropdown();
+}
+
+function handlePoSearchKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const first = getFilteredPoOptions()[0];
+    addPoChoice(first || event.target.value);
+  } else if (event.key === "Backspace" && !event.target.value) {
+    const selected = getSelectedPoNumbers();
+    selected.pop();
+    setSelectedPoNumbers(selected, true);
+  }
+}
+
+function openPoDropdown() {
+  const dd = document.getElementById("po-dropdown");
+  if (!dd) return;
+  dd.classList.remove("hidden");
+  filterPoDropdown();
+}
+
+function closePoDropdownSoon() {
+  setTimeout(() => {
+    document.getElementById("po-dropdown")?.classList.add("hidden");
+  }, 180);
+}
+
+function poMultiSelectInput(value = "") {
+  const selected = parsePoInputText(value);
+  const chipHtml = selected.length
+    ? selected
+        .map(
+          (
+            po,
+          ) => `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/25 text-primary px-2 py-1 text-[11px] font-extrabold">
+            ${esc(po)}
+            <button type="button" class="w-5 h-5 rounded-full bg-primary/10 hover:bg-primary/20 leading-none" onclick="event.stopPropagation(); removePoChoice('${poEncode(po)}')" title="Hapus PO">×</button>
+          </span>`,
+        )
+        .join("")
+    : `<span class="text-[12px] text-on-surface-variant px-1">Belum ada PO dipilih</span>`;
+
+  return `<label class="flex flex-col gap-2 md:col-span-2">
+    <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">PO Number</span>
+    <input type="hidden" name="po_number" value="${esc(selected.join(", "))}" required />
+    <div class="relative">
+      <div class="form-input min-h-[48px] flex items-center flex-wrap gap-2 py-2 cursor-text" onclick="document.getElementById('po-search-input')?.focus(); openPoDropdown();">
+        <div id="po-selected-chips" class="contents">${chipHtml}</div>
+        <input id="po-search-input" type="text" class="min-w-[220px] flex-1 bg-transparent border-0 outline-none focus:ring-0 p-1 text-on-surface placeholder:text-on-surface-variant/70" placeholder="Cari PO, klik banyak pilihan, atau paste PO1, PO2" autocomplete="off" onfocus="openPoDropdown()" onblur="closePoDropdownSoon()" oninput="handlePoSearchInput(this)" onkeydown="handlePoSearchKeydown(event)" />
+        <button type="button" class="thin-tab rounded-md px-3 py-2 text-[11px] font-extrabold" onclick="event.stopPropagation(); addPoFromSearch()">Tambah</button>
+      </div>
+      <div id="po-dropdown" class="hidden absolute z-50 left-0 right-0 mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl max-h-[320px] overflow-y-auto p-2">
+        <div id="po-dropdown-list"></div>
+      </div>
+    </div>
+    <span class="form-help">Bisa pilih banyak PO dari dropdown. Vendor Name otomatis mengikuti PO yang dipilih.</span>
+  </label>`;
+}
+
 let poLookupTimer = null;
 function schedulePoLookup() {
   clearTimeout(poLookupTimer);
@@ -599,7 +789,12 @@ function renderPage(page, toast = true) {
   document.getElementById("page-subtitle").textContent =
     pageMeta[safe].subtitle;
   root.innerHTML = map[safe]();
-  if (safe === "daftar") setTimeout(handleTicketTypeChange, 0);
+  if (safe === "daftar")
+    setTimeout(() => {
+      handleTicketTypeChange();
+      renderPoSelectedChips(getSelectedPoNumbers());
+      filterPoDropdown();
+    }, 0);
   updateActiveNav(safe);
   requestAnimationFrame(() => updateActiveNav(safe));
   history.replaceState(null, "", "#" + safe);
