@@ -458,44 +458,260 @@ function getFleetDefaultType() {
     : getFleetTypeOptions()[0];
 }
 
-function getFleetImageUrl(type) {
+function fleetVisualConfig(type) {
   const key = normalizeFleetType(type);
   const map = {
-    WINGBOX: "https://i.ibb.co/VMDX6j4/wingbox.png",
-    "WING BOX": "https://i.ibb.co/VMDX6j4/wingbox.png",
-    CDD: "https://i.ibb.co/6P2Xg74/cdd.png",
-    CDDL: "https://i.ibb.co/7XWzqL2/cddl.png",
-    "L300/PICK UP": "https://i.ibb.co/YyYf8C8/l300-pickup.png",
-    "L300 / PICK UP": "https://i.ibb.co/YyYf8C8/l300-pickup.png",
-    "L300 BOX": "https://i.ibb.co/YyYf8C8/l300-pickup.png",
-    PICKUP: "https://i.ibb.co/YyYf8C8/l300-pickup.png",
-    "KENDARAAN RODA 2": "https://i.ibb.co/2v7Ym9G/roda2.png",
-    "RODA 2": "https://i.ibb.co/2v7Ym9G/roda2.png",
-    KR2: "https://i.ibb.co/2v7Ym9G/roda2.png",
-    MOTOR: "https://i.ibb.co/2v7Ym9G/roda2.png",
-    MOBIL: "https://i.ibb.co/gP4zGvT/mobil.png",
-    FUSO: "https://i.ibb.co/R9m4Vn8/fuso-box.png",
-    "FUSO TRUCK BOX": "https://i.ibb.co/R9m4Vn8/fuso-box.png",
-    "TRONTON/FUSO": "https://i.ibb.co/R9m4Vn8/fuso-box.png",
-    TRONTON: "https://i.ibb.co/R9m4Vn8/fuso-box.png",
-    GRANDMAX: "https://i.ibb.co/zH9Xp9W/grandmax.png",
-    GMX: "https://i.ibb.co/zH9Xp9W/grandmax.png",
+    WINGBOX: {
+      label: "WINGBOX",
+      kind: "wingbox",
+      note: "Truck wingbox / box besar",
+      body: "#2563eb",
+      accent: "#60a5fa",
+      cargo: "#dbeafe",
+    },
+    CDD: {
+      label: "CDD",
+      kind: "truck",
+      note: "Colt diesel double",
+      body: "#2563eb",
+      accent: "#22c55e",
+      cargo: "#e0f2fe",
+    },
+    CDDL: {
+      label: "CDDL",
+      kind: "truck-long",
+      note: "CDD long / extended cargo",
+      body: "#1d4ed8",
+      accent: "#38bdf8",
+      cargo: "#dbeafe",
+    },
+    "L300/PICK UP": {
+      label: "L300/PICK UP",
+      kind: "pickup",
+      note: "L300 / pickup cargo",
+      body: "#16a34a",
+      accent: "#4ade80",
+      cargo: "#dcfce7",
+    },
+    "L300 / PICK UP": {
+      label: "L300/PICK UP",
+      kind: "pickup",
+      note: "L300 / pickup cargo",
+      body: "#16a34a",
+      accent: "#4ade80",
+      cargo: "#dcfce7",
+    },
+    PICKUP: {
+      label: "L300/PICK UP",
+      kind: "pickup",
+      note: "L300 / pickup cargo",
+      body: "#16a34a",
+      accent: "#4ade80",
+      cargo: "#dcfce7",
+    },
+    "KENDARAAN RODA 2": {
+      label: "KENDARAAN RODA 2",
+      kind: "motor",
+      note: "Motor / kendaraan roda dua",
+      body: "#dc2626",
+      accent: "#f87171",
+      cargo: "#fee2e2",
+    },
+    "RODA 2": {
+      label: "KENDARAAN RODA 2",
+      kind: "motor",
+      note: "Motor / kendaraan roda dua",
+      body: "#dc2626",
+      accent: "#f87171",
+      cargo: "#fee2e2",
+    },
+    MOTOR: {
+      label: "KENDARAAN RODA 2",
+      kind: "motor",
+      note: "Motor / kendaraan roda dua",
+      body: "#dc2626",
+      accent: "#f87171",
+      cargo: "#fee2e2",
+    },
+    MOBIL: {
+      label: "MOBIL",
+      kind: "car",
+      note: "Mobil passenger / small cargo",
+      body: "#0284c7",
+      accent: "#38bdf8",
+      cargo: "#e0f2fe",
+    },
+    FUSO: {
+      label: "FUSO",
+      kind: "truck-heavy",
+      note: "Fuso heavy cargo",
+      body: "#334155",
+      accent: "#64748b",
+      cargo: "#e2e8f0",
+    },
+    "TRONTON/FUSO": {
+      label: "FUSO",
+      kind: "truck-heavy",
+      note: "Fuso heavy cargo",
+      body: "#334155",
+      accent: "#64748b",
+      cargo: "#e2e8f0",
+    },
+    GRANDMAX: {
+      label: "GRANDMAX",
+      kind: "van",
+      note: "Grandmax / small logistics van",
+      body: "#0f766e",
+      accent: "#14b8a6",
+      cargo: "#ccfbf1",
+    },
+    GMX: {
+      label: "GRANDMAX",
+      kind: "van",
+      note: "Grandmax / small logistics van",
+      body: "#0f766e",
+      accent: "#14b8a6",
+      cargo: "#ccfbf1",
+    },
   };
-  return map[key] || "https://i.ibb.co/VMDX6j4/wingbox.png";
+
+  return (
+    map[key] || {
+      label: key || "FLEET",
+      kind: "truck",
+      note: "Preview kendaraan",
+      body: "#2563eb",
+      accent: "#60a5fa",
+      cargo: "#dbeafe",
+    }
+  );
+}
+
+function fleetSvgMarkup(type) {
+  const cfg = fleetVisualConfig(type);
+  const label = cfg.label || "FLEET";
+  const note = cfg.note || "Preview kendaraan";
+  const body = cfg.body;
+  const accent = cfg.accent;
+  const cargo = cfg.cargo;
+
+  const wheel = `<circle cx="170" cy="248" r="24" fill="#0f172a"/><circle cx="170" cy="248" r="10" fill="#94a3b8"/><circle cx="430" cy="248" r="24" fill="#0f172a"/><circle cx="430" cy="248" r="10" fill="#94a3b8"/>`;
+
+  const motor = `
+    <circle cx="185" cy="253" r="31" fill="#0f172a"/><circle cx="185" cy="253" r="13" fill="#94a3b8"/>
+    <circle cx="412" cy="253" r="31" fill="#0f172a"/><circle cx="412" cy="253" r="13" fill="#94a3b8"/>
+    <path d="M215 245 L275 198 L345 200 L405 245" fill="none" stroke="${body}" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M284 197 L304 154 L345 201" fill="none" stroke="${accent}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M330 190 L375 155 L418 160" fill="none" stroke="#334155" stroke-width="10" stroke-linecap="round"/>
+    <rect x="250" y="160" width="72" height="34" rx="12" fill="${cargo}" stroke="${body}" stroke-width="5"/>
+  `;
+
+  const car = `
+    <path d="M145 225 H455 C470 225 480 236 480 251 V260 H120 V250 C120 236 131 225 145 225Z" fill="${body}"/>
+    <path d="M190 225 L232 174 H360 L410 225Z" fill="${cargo}" stroke="${body}" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M239 181 H299 V222 H205Z" fill="#eff6ff"/><path d="M307 181 H356 L394 222 H307Z" fill="#eff6ff"/>
+    ${wheel}
+  `;
+
+  const pickup = `
+    <rect x="130" y="190" width="160" height="58" rx="12" fill="${body}"/>
+    <path d="M170 190 L205 150 H275 L310 190Z" fill="${cargo}" stroke="${body}" stroke-width="8"/>
+    <rect x="306" y="196" width="175" height="52" rx="10" fill="${cargo}" stroke="${body}" stroke-width="8"/>
+    <path d="M320 210 H468" stroke="${accent}" stroke-width="8" stroke-linecap="round"/>
+    ${wheel}
+  `;
+
+  const van = `
+    <rect x="115" y="170" width="360" height="78" rx="18" fill="${body}"/>
+    <path d="M115 208 H475 V250 H115Z" fill="${body}"/>
+    <rect x="150" y="184" width="80" height="45" rx="8" fill="#eff6ff"/>
+    <rect x="245" y="184" width="78" height="45" rx="8" fill="${cargo}"/>
+    <rect x="340" y="184" width="78" height="45" rx="8" fill="${cargo}"/>
+    ${wheel}
+  `;
+
+  const truckBase = (extra = "") => `
+    <rect x="112" y="156" width="260" height="92" rx="14" fill="${cargo}" stroke="${body}" stroke-width="9"/>
+    <path d="M378 184 H442 L482 218 V248 H378Z" fill="${body}"/>
+    <rect x="398" y="193" width="39" height="29" rx="5" fill="#eff6ff"/>
+    <path d="M130 182 H354" stroke="${accent}" stroke-width="9" stroke-linecap="round"/>
+    <path d="M130 210 H322" stroke="${accent}" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+    ${extra}
+    ${wheel}
+  `;
+
+  const kindMap = {
+    motor,
+    car,
+    pickup,
+    van,
+    wingbox: truckBase(`
+      <path d="M124 153 L252 105 L366 153" fill="none" stroke="${accent}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M139 156 L252 122 L352 156" fill="none" stroke="#ffffff" stroke-width="7" opacity=".75"/>
+    `),
+    "truck-heavy": `
+      <rect x="92" y="150" width="300" height="98" rx="12" fill="${cargo}" stroke="${body}" stroke-width="10"/>
+      <path d="M399 178 H455 L502 218 V248 H399Z" fill="${body}"/>
+      <rect x="421" y="189" width="39" height="31" rx="5" fill="#eff6ff"/>
+      <circle cx="146" cy="250" r="24" fill="#0f172a"/><circle cx="146" cy="250" r="10" fill="#94a3b8"/>
+      <circle cx="370" cy="250" r="24" fill="#0f172a"/><circle cx="370" cy="250" r="10" fill="#94a3b8"/>
+      <circle cx="455" cy="250" r="24" fill="#0f172a"/><circle cx="455" cy="250" r="10" fill="#94a3b8"/>
+      <path d="M120 182 H360" stroke="${accent}" stroke-width="9" stroke-linecap="round"/>
+      <path d="M120 212 H335" stroke="${accent}" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+    `,
+    "truck-long": `
+      <rect x="86" y="154" width="306" height="94" rx="14" fill="${cargo}" stroke="${body}" stroke-width="9"/>
+      <path d="M398 184 H454 L492 218 V248 H398Z" fill="${body}"/>
+      <rect x="416" y="193" width="39" height="29" rx="5" fill="#eff6ff"/>
+      <path d="M112 182 H366" stroke="${accent}" stroke-width="9" stroke-linecap="round"/>
+      <path d="M112 210 H345" stroke="${accent}" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+      ${wheel}
+    `,
+    truck: truckBase(""),
+  };
+
+  const vehicle = kindMap[cfg.kind] || kindMap.truck;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="620" height="340" viewBox="0 0 620 340" role="img" aria-label="${label}">
+    <defs>
+      <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0" stop-color="#eef4ff"/>
+        <stop offset="1" stop-color="#dbeafe"/>
+      </linearGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#0f172a" flood-opacity=".22"/>
+      </filter>
+    </defs>
+    <rect width="620" height="340" rx="34" fill="url(#bg)"/>
+    <circle cx="530" cy="70" r="72" fill="${accent}" opacity=".13"/>
+    <circle cx="90" cy="272" r="54" fill="${body}" opacity=".12"/>
+    <g filter="url(#shadow)">${vehicle}</g>
+    <text x="310" y="54" text-anchor="middle" font-size="30" font-weight="900" fill="#0f172a" font-family="Montserrat, Arial">${label}</text>
+    <text x="310" y="91" text-anchor="middle" font-size="15" font-weight="700" fill="#475569" font-family="Montserrat, Arial">${note}</text>
+  </svg>`;
+}
+
+function fleetImageDataUrl(type) {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(fleetSvgMarkup(type))}`;
+}
+
+function getFleetImageUrl(type) {
+  return fleetImageDataUrl(type);
 }
 
 function fleetPreviewCard(type = "") {
   const selected = normalizeFleetType(type) || getFleetDefaultType();
-  const src = getFleetImageUrl(selected);
+  const cfg = fleetVisualConfig(selected);
   return `<div id="fleet-preview-card" class="md:col-span-2 rounded-xl border border-outline-variant bg-surface-container/50 p-4">
     <div class="flex flex-col md:flex-row items-center gap-4">
       <div class="w-full md:w-[230px] h-[132px] bg-surface-container-high/60 rounded-lg border border-outline-variant flex items-center justify-center overflow-hidden">
-        <img id="fleet-preview-image" src="${esc(src)}" alt="${esc(selected)}" class="max-w-full max-h-full object-contain transition-transform duration-200" />
+        <img id="fleet-preview-image" src="${fleetImageDataUrl(selected)}" alt="${esc(cfg.label)}" class="w-full h-full object-contain transition-transform duration-200" />
       </div>
       <div class="flex-1 text-center md:text-left">
         <div class="text-[11px] uppercase font-bold text-on-surface-variant tracking-wider">Preview Fleet Type</div>
-        <div id="fleet-preview-label" class="text-xl font-extrabold text-primary mt-1">${esc(selected)}</div>
-        <div class="text-sm text-on-surface-variant mt-2">Gambar kendaraan otomatis mengikuti Fleet Type yang dipilih.</div>
+        <div id="fleet-preview-label" class="text-xl font-extrabold text-primary mt-1">${esc(cfg.label)}</div>
+        <div id="fleet-preview-note" class="text-sm text-on-surface-variant mt-2">${esc(cfg.note)}</div>
+        <div class="text-[11px] text-on-surface-variant mt-2">Gambar kendaraan otomatis mengikuti pilihan fleet.</div>
       </div>
     </div>
   </div>`;
@@ -507,13 +723,16 @@ function updateFleetPreview() {
   const type = normalizeFleetType(
     form.querySelector('[name="fleet_type"]')?.value || getFleetDefaultType(),
   );
+  const cfg = fleetVisualConfig(type);
   const img = document.getElementById("fleet-preview-image");
   const label = document.getElementById("fleet-preview-label");
+  const note = document.getElementById("fleet-preview-note");
   if (img) {
-    img.src = getFleetImageUrl(type);
-    img.alt = type;
+    img.src = fleetImageDataUrl(type);
+    img.alt = cfg.label;
   }
-  if (label) label.textContent = type;
+  if (label) label.textContent = cfg.label;
+  if (note) note.textContent = cfg.note;
 }
 
 function parsePoInputText(value) {
@@ -876,9 +1095,9 @@ function renderPage(page, toast = true) {
   if (safe === "daftar")
     setTimeout(() => {
       handleTicketTypeChange();
+      updateFleetPreview();
       renderPoSelectedChips(getSelectedPoNumbers());
       filterPoDropdown();
-      updateFleetPreview();
     }, 0);
   updateActiveNav(safe);
   requestAnimationFrame(() => updateActiveNav(safe));
