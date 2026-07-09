@@ -436,16 +436,35 @@ function queueTypeValue(row = {}) {
   return 9;
 }
 
+function stableQueueSequenceValue(row = {}) {
+  const queueNo = row.queue_no || row.original_queue_no || "";
+  const seq =
+    typeof queueSequenceNumber === "function"
+      ? queueSequenceNumber(queueNo)
+      : Number(String(queueNo).match(/-\s*(\d+)\s*$/)?.[1] || 0);
+  if (Number.isFinite(seq) && seq > 0) return seq;
+  const fallback = Number(row.queue_sequence || 0);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 999999;
+}
+
 function sortQueueBySlotSequence(queue = []) {
   return [...queue].sort((a, b) => {
+    // Priority utama tetap SLOT.
+    // Contoh: semua Slot 1 tampil dulu, baru Slot 2, dst.
     const slotDiff = queueSlotValue(a) - queueSlotValue(b);
     if (slotDiff) return slotDiff;
 
-    const createdDiff = queueCreatedValue(a) - queueCreatedValue(b);
-    if (createdDiff) return createdDiff;
-
+    // Di slot yang sama, VIP ngalahin REG/DROP.
+    // VIP Slot 2 tidak akan naik di atas Slot 1.
     const typeDiff = queueTypeValue(a) - queueTypeValue(b);
     if (typeDiff) return typeDiff;
+
+    // Setelah type, baru ikut nomor antrian / sequence yang stabil.
+    const seqDiff = stableQueueSequenceValue(a) - stableQueueSequenceValue(b);
+    if (seqDiff) return seqDiff;
+
+    const createdDiff = queueCreatedValue(a) - queueCreatedValue(b);
+    if (createdDiff) return createdDiff;
 
     return String(a.ticket_id || a.queue_no || "").localeCompare(
       String(b.ticket_id || b.queue_no || ""),
@@ -777,9 +796,9 @@ function buildDashboardFromV2(response) {
     kpis,
     summary,
     queue,
-    priority: queue
-      .filter((q) => !String(q.status || "").includes("COMPLETED"))
-      .slice(0, 8),
+    priority: sortQueueBySlotSequence(
+      queue.filter((q) => !String(q.status || "").includes("COMPLETED")),
+    ).slice(0, 8),
     dock: Object.values(dockMap).slice(0, 24),
     report_preview: queue,
     raw: {

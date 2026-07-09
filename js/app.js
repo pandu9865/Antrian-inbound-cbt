@@ -327,14 +327,22 @@ function renderAuthHeader() {
   box.style.display = "";
   const role = normalizeRole(user.role);
   box.innerHTML = `<div class="hidden md:flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container/70 px-3 py-1 text-xs">
+    <button onclick="refreshDashboard()" class="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary font-bold px-2 py-1 hover:bg-primary/20" title="Refresh data menu sekarang">
+      <span class="material-symbols-outlined text-sm">refresh</span>Refresh Data
+    </button>
     <span class="material-symbols-outlined text-sm text-primary">verified_user</span>
     <span class="font-bold text-on-surface">${esc(user.display_name || user.username)}</span>
     <span class="text-on-surface-variant">· ${esc(role)}</span>
     <button onclick="logoutUser()" class="ml-1 text-error font-bold hover:underline">Logout</button>
   </div>
-  <button onclick="logoutUser()" class="md:hidden p-2 rounded-full hover:bg-surface-container-high transition-colors" title="Logout">
-    <span class="material-symbols-outlined text-error">logout</span>
-  </button>`;
+  <div class="md:hidden flex items-center gap-1">
+    <button onclick="refreshDashboard()" class="p-2 rounded-full hover:bg-surface-container-high transition-colors" title="Refresh Data">
+      <span class="material-symbols-outlined text-primary">refresh</span>
+    </button>
+    <button onclick="logoutUser()" class="p-2 rounded-full hover:bg-surface-container-high transition-colors" title="Logout">
+      <span class="material-symbols-outlined text-error">logout</span>
+    </button>
+  </div>`;
 }
 
 function kpiCards() {
@@ -1389,13 +1397,19 @@ function setCheckerSubmitButtonState(stateName = "ready", label = "") {
 
 function pageChecker() {
   const o = state.options;
-  const rows = state.dashboard?.queue || [];
+  const rows = (state.dashboard?.queue || []).filter(
+    (r) =>
+      !String(r.status || "")
+        .toUpperCase()
+        .includes("COMPLETED"),
+  );
+
   return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
     <div class="xl:col-span-7 glass-card rounded-xl p-6">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
         <div>
           <h3 class="font-headline-md text-headline-md mb-1">List Checker</h3>
-          <p class="text-on-surface-variant">Pilih data, isi Gate, lalu simpan. Data otomatis tampil di monitor Panggil dan voice TV.</p>
+          <p class="text-on-surface-variant">Pilih data aktif, isi Gate, lalu simpan. Data status selesai ada di menu Waiting List.</p>
         </div>
         <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-2 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh</button>
       </div>
@@ -1404,11 +1418,10 @@ function pageChecker() {
         <input id="checker-filter-queue" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter no antrian..." />
         <input id="checker-filter-po" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter PO..." />
         <select id="checker-status-filter" class="form-select" onchange="filterCheckerAdvanced()">
-          <option value="ALL">Semua Status</option>
+          <option value="ALL">Semua Status Aktif</option>
           <option value="WAITING">WAITING</option>
           <option value="CALLED">CALLED</option>
           <option value="UNLOADING">UNLOADING</option>
-          <option value="COMPLETED">COMPLETED</option>
           <option value="HOLD">HOLD</option>
         </select>
       </div>
@@ -1418,7 +1431,7 @@ function pageChecker() {
             <tr>${["Pilih", "Queue", "Vendor", "Type Mobil", "PO", "Plat", "Driver", "Gate", "Status", "Menunggu"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
           </thead>
           <tbody class="divide-y divide-outline-variant/10">
-            ${rows.map((r, i) => checkerListRow(r, i)).join("") || `<tr><td colspan="10" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data Checker.</td></tr>`}
+            ${rows.map((r, i) => checkerListRow(r, i)).join("") || `<tr><td colspan="10" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data aktif untuk Checker. Data selesai pindah ke Waiting List.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -2330,7 +2343,7 @@ function pageSetting() {
     <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">API Setup</h3>
       <p class="text-on-surface-variant mb-4">Edit file HTML, ganti konstanta <b>API_URL_V2</b> dengan URL Web App GAS.</p>
       <pre class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-x-auto">const API_URL_V2 = "${esc(typeof API_URL_V2 !== "undefined" ? API_URL_V2 : "")}";</pre>
-      <button onclick="initApi()" class="mt-4 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Test API</button>
+      <button onclick="initApi()" class="mt-4 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Refresh / Test API</button>
     </div>
     <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Endpoint Cepat</h3>
       ${["raw", "reload", "debug"].map((a) => `<button onclick="openApi('${a}')" class="thin-tab rounded-lg px-4 py-2 mr-2 mb-2">${a}</button>`).join("")}
@@ -3039,7 +3052,7 @@ function checkerListRow(r, i) {
     ? `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-70">Selesai</button>`
     : `<button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button>`;
 
-  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors ${isCompleted ? "opacity-70" : ""}">
+  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors ${isCompleted ? "hidden" : ""}">
     <td class="px-4 py-3">${actionButton}</td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
     <td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td>
