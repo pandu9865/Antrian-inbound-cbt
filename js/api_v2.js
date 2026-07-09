@@ -1469,6 +1469,15 @@ function buildUpdatedOutputRowFromBody(body = {}) {
 async function submitChecker(e) {
   e.preventDefault();
   const form = e.target;
+
+  if (form.dataset.saving === "1") {
+    showToast("Data sedang disimpan, tunggu sebentar.");
+    return;
+  }
+  form.dataset.saving = "1";
+  if (typeof setCheckerSubmitButtonState === "function") {
+    setCheckerSubmitButtonState("saving", "Menyimpan...");
+  }
   const requiredOk = validateRequiredFields(form);
   const plateOk = validatePlateInput(form.plat_number);
 
@@ -1476,11 +1485,17 @@ async function submitChecker(e) {
     showToast(
       "Wingbox bisa pilih 1 sampai 3 gate berbeda dan tidak boleh duplicate.",
     );
+    form.dataset.saving = "0";
+    if (typeof updateCheckerStatusPreview === "function")
+      updateCheckerStatusPreview(form.status?.value || "CALLED");
     return;
   }
 
   if (!requiredOk || !plateOk) {
     showToast("Pilih data dari List Security dan isi Gate.");
+    form.dataset.saving = "0";
+    if (typeof updateCheckerStatusPreview === "function")
+      updateCheckerStatusPreview(form.status?.value || "CALLED");
     return;
   }
 
@@ -1579,7 +1594,10 @@ async function submitChecker(e) {
     );
   }
 
-  renderPage("checker", false);
+  if (typeof setCheckerSubmitButtonState === "function") {
+    setCheckerSubmitButtonState("done", "Data Sudah Diubah");
+  }
+  setTimeout(() => renderPage("checker", false), 500);
 }
 
 async function refreshCallMonitorData(renderAfter = false) {

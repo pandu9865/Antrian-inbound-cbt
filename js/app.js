@@ -1347,6 +1347,46 @@ function resetCheckerGatePicker() {
   renderCheckerGatePicker("", "Dock 01", false);
 }
 
+function setCheckerSubmitButtonState(stateName = "ready", label = "") {
+  const btn = document.getElementById("checker-submit-btn");
+  const txt = document.getElementById("checker-submit-text");
+  if (!btn) return;
+
+  const base =
+    "mt-6 px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-all";
+  const active =
+    "bg-primary-container text-on-primary-container hover:brightness-110";
+  const saving =
+    "bg-outline-variant text-on-surface-variant cursor-wait opacity-80";
+  const done =
+    "bg-outline-variant text-on-surface-variant cursor-not-allowed opacity-70";
+
+  if (stateName === "saving") {
+    btn.disabled = true;
+    btn.className = `${base} ${saving}`;
+    if (txt) txt.textContent = label || "Menyimpan...";
+    return;
+  }
+
+  if (stateName === "done") {
+    btn.disabled = true;
+    btn.className = `${base} ${done}`;
+    if (txt) txt.textContent = label || "Data Sudah Diubah";
+    return;
+  }
+
+  if (stateName === "completed") {
+    btn.disabled = true;
+    btn.className = `${base} ${done}`;
+    if (txt) txt.textContent = label || "Sudah Selesai";
+    return;
+  }
+
+  btn.disabled = false;
+  btn.className = `${base} ${active}`;
+  if (txt && label) txt.textContent = label;
+}
+
 function pageChecker() {
   const o = state.options;
   const rows = state.dashboard?.queue || [];
@@ -2984,18 +3024,23 @@ function priorityItem(r) {
 
 function checkerListRow(r, i) {
   const st = String(r.status || "").toUpperCase();
-  const wait = st.includes("COMPLETED")
+  const isCompleted = st.includes("COMPLETED");
+  const wait = isCompleted
     ? "Selesai"
     : r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
-  const actionLabel = st.includes("COMPLETED")
+  const actionLabel = isCompleted
     ? "Selesai"
     : st.includes("UNLOADING")
       ? "Selesai"
       : st.includes("CALLED")
         ? "Unloading"
         : "Panggil";
-  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors">
-    <td class="px-4 py-3"><button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button></td>
+  const actionButton = isCompleted
+    ? `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-70">Selesai</button>`
+    : `<button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button>`;
+
+  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors ${isCompleted ? "opacity-70" : ""}">
+    <td class="px-4 py-3">${actionButton}</td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
     <td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td>
     <td class="px-4 py-3 font-bold text-sm">${esc(r.fleet_type || "-")}</td>
@@ -3004,7 +3049,7 @@ function checkerListRow(r, i) {
     <td class="px-4 py-3">${esc(r.driver_name || "-")}</td>
     <td class="px-4 py-3 min-w-[120px]">${esc(r.gate || "-")}</td>
     <td class="px-4 py-3">${esc(st || "-")}</td>
-    <td class="px-4 py-3 font-queue-id ${st.includes("COMPLETED") ? "text-success" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
+    <td class="px-4 py-3 font-queue-id ${isCompleted ? "text-success" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
   </tr>`;
 }
 
@@ -3044,6 +3089,9 @@ function populateCheckerFromTicket(index) {
       nextStatus === "COMPLETED" ? "SLA OK" : "ON PROCESS";
 
   updateCheckerStatusPreview(nextStatus);
+  if (nextStatus === "COMPLETED" && currentStatus.includes("COMPLETED")) {
+    setCheckerSubmitButtonState("completed", "Sudah Selesai");
+  }
 
   showToast(
     nextStatus === "CALLED"
@@ -3058,13 +3106,11 @@ function populateCheckerFromTicket(index) {
 
 function updateCheckerStatusPreview(status = "CALLED") {
   const safe = String(status || "CALLED").toUpperCase();
-  const isCalled = safe.includes("CALLED");
   const isUnloading = safe.includes("UNLOADING");
   const isDone = safe.includes("COMPLETED");
   const box = document.getElementById("checker-status-box");
   const icon = document.getElementById("checker-status-icon");
   const label = document.getElementById("checker-status-preview");
-  const btnText = document.getElementById("checker-submit-text");
 
   if (box) {
     box.className = isDone
@@ -3085,12 +3131,11 @@ function updateCheckerStatusPreview(status = "CALLED") {
       : isUnloading
         ? "UNLOADING"
         : "PANGGIL DRIVER";
-  if (btnText)
-    btnText.textContent = isDone
-      ? "Selesai Unloading"
-      : isUnloading
-        ? "Mulai Unloading"
-        : "Panggil ke Gate";
+
+  if (isDone) setCheckerSubmitButtonState("active", "Selesai Unloading");
+  else if (isUnloading)
+    setCheckerSubmitButtonState("active", "Mulai Unloading");
+  else setCheckerSubmitButtonState("active", "Panggil ke Gate");
 }
 
 function filterCheckerStatus(status) {
