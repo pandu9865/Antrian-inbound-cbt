@@ -1395,14 +1395,74 @@ function setCheckerSubmitButtonState(stateName = "ready", label = "") {
   if (txt && label) txt.textContent = label;
 }
 
-function pageChecker() {
-  const o = state.options;
-  const rows = (state.dashboard?.queue || []).filter(
+function getCheckerActiveRows() {
+  return (state.dashboard?.queue || []).filter(
     (r) =>
       !String(r.status || "")
         .toUpperCase()
         .includes("COMPLETED"),
   );
+}
+
+function checkerRowKey(row = {}) {
+  return poEncode(
+    JSON.stringify({
+      ticket_id: row.ticket_id || "",
+      row_no: row.row_no || "",
+      queue_no: row.original_queue_no || row.queue_no || "",
+      plat_number: normalizePlateValue(row.plat_number || ""),
+      po_number: row.po_number || "",
+    }),
+  );
+}
+
+function findCheckerRowByKey(encodedKey = "") {
+  let key = {};
+  try {
+    key = JSON.parse(poDecode(encodedKey));
+  } catch (err) {
+    key = {};
+  }
+
+  const allRows = state.dashboard?.queue || [];
+  const activeRows = getCheckerActiveRows();
+  const candidates = activeRows.concat(allRows);
+
+  const ticketId = String(key.ticket_id || "").trim();
+  const rowNo = String(key.row_no || "").trim();
+  const queueNo = String(key.queue_no || "").trim();
+  const plate = normalizePlateValue(key.plat_number || "");
+  const po = String(key.po_number || "").trim();
+
+  return (
+    candidates.find(
+      (row) => ticketId && String(row.ticket_id || "").trim() === ticketId,
+    ) ||
+    candidates.find(
+      (row) => rowNo && String(row.row_no || "").trim() === rowNo,
+    ) ||
+    candidates.find(
+      (row) =>
+        queueNo &&
+        plate &&
+        String(row.original_queue_no || row.queue_no || "").trim() ===
+          queueNo &&
+        normalizePlateValue(row.plat_number || "") === plate,
+    ) ||
+    candidates.find(
+      (row) =>
+        plate &&
+        po &&
+        normalizePlateValue(row.plat_number || "") === plate &&
+        String(row.po_number || "").trim() === po,
+    ) ||
+    null
+  );
+}
+
+function pageChecker() {
+  const o = state.options;
+  const rows = getCheckerActiveRows();
 
   return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
     <div class="xl:col-span-7 glass-card rounded-xl p-6">
@@ -3059,11 +3119,17 @@ function checkerListRow(r, i) {
       : st.includes("CALLED")
         ? "Unloading"
         : "Panggil";
+  const key = checkerRowKey(r);
   const actionButton = isCompleted
     ? `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-70">Selesai</button>`
-    : `<button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button>`;
+    : `<button type="button" onclick="populateCheckerFromTicketKey('${key}')" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button>`;
 
-  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors ${isCompleted ? "hidden" : ""}">
+  return `<tr
+    data-status="${esc(st || "-")}"
+    data-vendor="${esc(String(r.vendor_name || "").toLowerCase())}"
+    data-queue="${esc(String(r.queue_no || r.original_queue_no || "").toLowerCase())}"
+    data-po="${esc(String(r.po_number || "").toLowerCase())}"
+    class="hover:bg-primary/5 transition-colors ${isCompleted ? "hidden" : ""}">
     <td class="px-4 py-3">${actionButton}</td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
     <td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td>
@@ -3077,8 +3143,69 @@ function checkerListRow(r, i) {
   </tr>`;
 }
 
+function populateCheckerFromTicketKey(encodedKey) {
+  const row = findCheckerRowByKey(encodedKey);
+  if (!row) {
+    showToast(
+      "Data checker tidak ditemukan. Klik Refresh Data lalu pilih ulang.",
+    );
+    return;
+  }
+  populateCheckerFormFromRow(row);
+}
+
 function populateCheckerFromTicket(index) {
-  const row = (state.dashboard?.queue || [])[index];
+  const row = getCheckerActiveRows()[index];
+  if (!row) {
+    showToast(
+      "Data checker tidak ditemukan. Klik Refresh Data lalu pilih ulang.",
+    );
+    return;
+  }
+  populateCheckerFormFromRow(row);
+}
+
+function updateCheckerStatusPreview(status = "CALLED") {
+  const safe = String(status || "CALLED").toUpperCase();
+  const isUnloading = safe.includes("UNLOADING");
+  const isDone = safe.includes("COMPLETED");
+  const box = document.getElementById("checker-status-box");
+  const icon = document.getElementById("checker-status-icon");
+  const label = document.getElementById("checker-status-preview");
+
+  if (box) {
+    box.className = isDone
+      ? "bg-success/15 border border-success/30 rounded-lg px-4 py-3 text-success font-bold flex items-center gap-2"
+      : isUnloading
+        ? "bg-warning/15 border border-warning/30 rounded-lg px-4 py-3 text-warning font-bold flex items-center gap-2"
+        : "bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2";
+  }
+  if (icon)
+    icon.textContent = isDone
+      ? "check_circle"
+      : isUnloading
+        ? "local_shipping"
+        : "campaign";
+  if (label)
+    label.textContent = isDone
+      ? "SELESAI UNLOADING"
+      : isUnloading
+        ? "UNLOADING"
+        : "PANGGIL DRIVER";
+
+  if (isDone) setCheckerSubmitButtonState("active", "Selesai Unloading");
+  else if (isUnloading)
+    setCheckerSubmitButtonState("active", "Mulai Unloading");
+  else setCheckerSubmitButtonState("active", "Panggil ke Gate");
+}
+
+function filterCheckerStatus(status) {
+  const el = document.getElementById("checker-status-filter");
+  if (el && status) el.value = status;
+  filterCheckerAdvanced();
+}
+
+function populateCheckerFormFromRow(row) {
   const form = document.getElementById("checker-form");
   if (!row || !form) return;
 
@@ -3128,58 +3255,18 @@ function populateCheckerFromTicket(index) {
   );
 }
 
-function updateCheckerStatusPreview(status = "CALLED") {
-  const safe = String(status || "CALLED").toUpperCase();
-  const isUnloading = safe.includes("UNLOADING");
-  const isDone = safe.includes("COMPLETED");
-  const box = document.getElementById("checker-status-box");
-  const icon = document.getElementById("checker-status-icon");
-  const label = document.getElementById("checker-status-preview");
-
-  if (box) {
-    box.className = isDone
-      ? "bg-success/15 border border-success/30 rounded-lg px-4 py-3 text-success font-bold flex items-center gap-2"
-      : isUnloading
-        ? "bg-warning/15 border border-warning/30 rounded-lg px-4 py-3 text-warning font-bold flex items-center gap-2"
-        : "bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2";
-  }
-  if (icon)
-    icon.textContent = isDone
-      ? "check_circle"
-      : isUnloading
-        ? "local_shipping"
-        : "campaign";
-  if (label)
-    label.textContent = isDone
-      ? "SELESAI UNLOADING"
-      : isUnloading
-        ? "UNLOADING"
-        : "PANGGIL DRIVER";
-
-  if (isDone) setCheckerSubmitButtonState("active", "Selesai Unloading");
-  else if (isUnloading)
-    setCheckerSubmitButtonState("active", "Mulai Unloading");
-  else setCheckerSubmitButtonState("active", "Panggil ke Gate");
-}
-
-function filterCheckerStatus(status) {
-  const el = document.getElementById("checker-status-filter");
-  if (el && status) el.value = status;
-  filterCheckerAdvanced();
-}
-
 function filterCheckerAdvanced() {
   const vendor = String(
-    document.getElementById("checker-vendor-filter")?.value || "",
+    document.getElementById("checker-filter-vendor")?.value || "",
   )
     .toLowerCase()
     .trim();
   const queue = String(
-    document.getElementById("checker-queue-filter")?.value || "",
+    document.getElementById("checker-filter-queue")?.value || "",
   )
     .toLowerCase()
     .trim();
-  const po = String(document.getElementById("checker-po-filter")?.value || "")
+  const po = String(document.getElementById("checker-filter-po")?.value || "")
     .toLowerCase()
     .trim();
   const status = String(
@@ -3189,12 +3276,14 @@ function filterCheckerAdvanced() {
   document
     .querySelectorAll("#checker-security-table tbody tr")
     .forEach((tr) => {
+      const rowStatus = String(tr.dataset.status || "").toUpperCase();
+      const isCompleted = rowStatus.includes("COMPLETED");
       const okVendor = !vendor || (tr.dataset.vendor || "").includes(vendor);
       const okQueue = !queue || (tr.dataset.queue || "").includes(queue);
       const okPo = !po || (tr.dataset.po || "").includes(po);
-      const rowStatus = String(tr.dataset.status || "").toUpperCase();
       const okStatus = status === "ALL" || rowStatus.includes(status);
-      tr.style.display = okVendor && okQueue && okPo && okStatus ? "" : "none";
+      tr.style.display =
+        !isCompleted && okVendor && okQueue && okPo && okStatus ? "" : "none";
     });
 }
 
