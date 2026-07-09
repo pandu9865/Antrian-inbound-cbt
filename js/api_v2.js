@@ -390,9 +390,28 @@ function buildOptionsFromV2(tableRows = []) {
   };
 }
 
+function getTableV2Rows(response) {
+  // GAS terbaru return Data V2 di key `tablev2`.
+  // Fallback `tableDatav2` dipasang untuk jaga-jaga kalau nama key berubah,
+  // lalu `table` sebagai fallback versi lama.
+  if (Array.isArray(response?.tablev2)) return response.tablev2;
+  if (Array.isArray(response?.tableDatav2)) return response.tableDatav2;
+  if (Array.isArray(response?.data?.tablev2)) return response.data.tablev2;
+  if (Array.isArray(response?.data?.tableDatav2))
+    return response.data.tableDatav2;
+  if (Array.isArray(response?.table)) return response.table;
+  return [];
+}
+
+function getKpiRawRows(response) {
+  if (Array.isArray(response?.kpiRaw)) return response.kpiRaw;
+  if (Array.isArray(response?.data?.kpiRaw)) return response.data.kpiRaw;
+  return [];
+}
+
 function buildDashboardFromV2(response) {
-  const tableRows = Array.isArray(response?.table) ? response.table : [];
-  const kpiRaw = Array.isArray(response?.kpiRaw) ? response.kpiRaw : [];
+  const tableRows = getTableV2Rows(response);
+  const kpiRaw = getKpiRawRows(response);
   v2PoIndex = buildPoIndex(tableRows);
 
   const rawQueue = buildQueueFromV2Table(tableRows);
@@ -426,7 +445,11 @@ function buildDashboardFromV2(response) {
       .slice(0, 8),
     dock: Object.values(dockMap).slice(0, 24),
     report_preview: queue,
-    raw: { kpiRaw, table: tableRows },
+    raw: {
+      kpiRaw,
+      tablev2: tableRows,
+      table: Array.isArray(response?.table) ? response.table : [],
+    },
     options: buildOptionsFromV2(tableRows),
   };
 }
@@ -782,10 +805,17 @@ async function loadDebug() {
     state.debug = {
       api_url: API_URL_V2,
       timestamp: v2RawResponse.timestamp,
-      kpiRaw_rows: v2RawResponse.kpiRaw?.length || 0,
-      table_rows: v2RawResponse.table?.length || 0,
-      table_sample: (v2RawResponse.table || []).slice(0, 3),
-      kpi_sample: (v2RawResponse.kpiRaw || []).slice(0, 3),
+      kpiRaw_rows: getKpiRawRows(v2RawResponse).length || 0,
+      table_rows_old: Array.isArray(v2RawResponse.table)
+        ? v2RawResponse.table.length
+        : 0,
+      tablev2_rows: getTableV2Rows(v2RawResponse).length || 0,
+      tablev2_sample: getTableV2Rows(v2RawResponse).slice(0, 3),
+      table_old_sample: (Array.isArray(v2RawResponse.table)
+        ? v2RawResponse.table
+        : []
+      ).slice(0, 3),
+      kpi_sample: getKpiRawRows(v2RawResponse).slice(0, 3),
       po_index_sample: Object.values(v2PoIndex || {}).slice(0, 5),
       local_tickets: getLocalTickets(),
     };
