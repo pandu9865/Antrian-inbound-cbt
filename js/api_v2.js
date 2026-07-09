@@ -105,10 +105,10 @@ async function updateCheckerToBackend(body = {}) {
 }
 
 async function fetchV2Data() {
-  // SAFE GAS:
-  // /exec biasa tetap dipakai web lain.
-  // Web Antrian harus pakai action=inboundRaw supaya dapat outputForm.
-  return apiGetV2("inboundRaw");
+  // FAST SECURITY LOAD:
+  // Jangan pakai inboundRaw karena itu baca kpiRaw + table + tablev2 full.
+  // Security cuma butuh Data V2 compact untuk vendor/PO lookup + Output form untuk hide PO yang sudah daftar.
+  return apiGetV2("securityOptions");
 }
 
 async function fetchOutputFormData() {
@@ -1369,6 +1369,13 @@ async function submitSecurity(e) {
     }
 
     state.lastCalled = newRows[0];
+    state.lastSecurityRows = newRows;
+    try {
+      localStorage.setItem(
+        "inbound_cbt_last_print_rows",
+        JSON.stringify(newRows),
+      );
+    } catch (err) {}
     const queueEl = document.getElementById("new-queue-number");
     if (queueEl) queueEl.textContent = newRows[0].queue_no;
     renderPage("checker", false);

@@ -552,6 +552,90 @@ function validatePlateRows() {
   return ok && allValid;
 }
 
+function getLastSecurityRowsForPrint() {
+  if (Array.isArray(state.lastSecurityRows) && state.lastSecurityRows.length) {
+    return state.lastSecurityRows;
+  }
+  try {
+    const raw = localStorage.getItem("inbound_cbt_last_print_rows");
+    const rows = raw ? JSON.parse(raw) : [];
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function printSecurityTickets() {
+  const rows = getLastSecurityRowsForPrint();
+
+  if (!rows.length) {
+    showToast("Belum ada hasil input untuk diprint.");
+    return;
+  }
+
+  const now = formatDateTimeLocal(new Date());
+  const cards = rows
+    .map(
+      (r) => `<div class="ticket">
+        <div class="ticket-head">
+          <div>
+            <div class="brand">Inbound CBT</div>
+            <div class="sub">Security Queue Ticket</div>
+          </div>
+          <div class="status">${esc(r.status || "WAITING")}</div>
+        </div>
+        <div class="queue">${esc(r.queue_no || "-")}</div>
+        <div class="grid">
+          <div><b>Vendor</b><span>${esc(r.vendor_name || "-")}</span></div>
+          <div><b>PO</b><span>${esc(r.po_number || "-")}</span></div>
+          <div><b>Plat</b><span>${esc(r.plat_number || "-")}</span></div>
+          <div><b>Driver</b><span>${esc(r.driver_name || "-")}</span></div>
+          <div><b>Fleet</b><span>${esc(r.fleet_type || "-")}</span></div>
+          <div><b>Slot</b><span>${esc(r.slot || "-")}</span></div>
+          <div><b>Total Qty</b><span>${esc(num(r.total_po_qty || 0))}</span></div>
+          <div><b>Count SKU</b><span>${esc(num(r.count_po_sku || 0))}</span></div>
+          <div><b>Register</b><span>${esc(r.register_time || r.created_at || "-")}</span></div>
+          <div><b>Print Time</b><span>${esc(now)}</span></div>
+        </div>
+      </div>`,
+    )
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Print Nomor Antrian</title>
+<style>
+  @page { size: A5 portrait; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #fff; }
+  .ticket { border: 2px solid #111827; border-radius: 18px; padding: 18px; margin: 0 0 14px; page-break-inside: avoid; }
+  .ticket-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 1px solid #d1d5db; padding-bottom: 10px; }
+  .brand { font-weight: 900; font-size: 20px; letter-spacing: .02em; }
+  .sub { color: #6b7280; font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: .12em; }
+  .status { border: 1px solid #f97316; color: #ea580c; background: #fff7ed; font-weight: 900; border-radius: 999px; padding: 7px 11px; font-size: 12px; }
+  .queue { text-align: center; font-family: "Courier New", monospace; font-size: 64px; line-height: 1; color: #1d4ed8; font-weight: 900; margin: 22px 0; letter-spacing: .04em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid div { border: 1px solid #d1d5db; border-radius: 10px; padding: 8px; min-height: 52px; }
+  b { display: block; font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
+  span { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+  @media print { .ticket { margin-bottom: 10mm; } }
+</style>
+</head>
+<body>${cards}<script>window.onload = () => { window.print(); setTimeout(() => window.close(), 600); };</script></body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=520,height=720");
+  if (!win) {
+    showToast("Popup print diblokir browser. Allow popup dulu.");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
 function pageDaftar() {
   const o = state.options;
   const lookup = state.poLookup;
@@ -593,9 +677,14 @@ function pageDaftar() {
         ${renderPoLookupSummary(lookup)}
         <p class="form-help mt-3">Catatan: Jika 1 plat berisi banyak PO dengan vendor yang sama, Checker hanya tampil 1 baris karena 1 plat = 1 mobil. Jika input banyak plat, data dipecah per plat dan nomor antrian mengikuti jumlah plat yang diregister.</p>
         ${datalists()}
-        <button id="security-submit-btn" class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="submit">
-          <span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span>
-        </button>
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <button id="security-submit-btn" class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="submit">
+            <span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span>
+          </button>
+          <button type="button" onclick="printSecurityTickets()" class="thin-tab rounded-lg px-6 py-3 font-bold flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined">print</span>Print Nomor Terakhir
+          </button>
+        </div>
       </form>
     </div>
     <div class="glass-card rounded-xl p-6 flex flex-col justify-center items-center text-center">
@@ -2039,15 +2128,14 @@ function filterPoDropdown() {
   list.innerHTML = options
     .map((po) => {
       const meta = getPoMeta(po);
-      const vendor = meta?.vendor_name
-        ? `<span class="text-[10px] text-on-surface-variant font-bold truncate">${esc(meta.vendor_name)}</span>`
-        : "";
-      const sku = meta?.count_po_sku
-        ? `<span class="text-[10px] text-primary font-bold">SKU ${esc(meta.count_po_sku)}</span>`
-        : "";
-      return `<button type="button" onclick="selectPoChoice('${poEncode(po)}')" class="w-full px-3 py-2 rounded-lg hover:bg-primary/10 text-left flex items-center justify-between gap-3">
-        <span class="font-queue-id text-[12px] text-on-surface">${esc(po)}</span>
-        <span class="flex flex-col items-end min-w-0">${vendor}${sku}</span>
+      const vendor = meta?.vendor_name || "";
+      const sku = meta?.count_po_sku || 0;
+      return `<button type="button" onclick="selectPoChoice('${poEncode(po)}')" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 text-left grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-1 sm:gap-3 border-b border-outline-variant/20 last:border-b-0">
+        <span class="font-queue-id text-[12px] sm:text-[13px] text-on-surface break-all leading-5">${esc(po)}</span>
+        <span class="flex flex-col sm:items-end gap-0.5 min-w-0">
+          <span class="text-[10px] sm:text-[11px] text-on-surface-variant font-bold break-words leading-4">${esc(vendor || "-")}</span>
+          <span class="text-[10px] text-primary font-bold">SKU ${esc(sku || 0)}</span>
+        </span>
       </button>`;
     })
     .join("");
@@ -2142,9 +2230,9 @@ function poMultiSelectInput(value = "") {
         .map(
           (
             po,
-          ) => `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/25 text-primary px-2 py-1 text-[11px] font-extrabold">
-            ${esc(po)}
-            <button type="button" class="w-5 h-5 rounded-full bg-primary/10 hover:bg-primary/20 leading-none" onclick="event.stopPropagation(); removePoChoice('${poEncode(po)}')" title="Hapus PO">×</button>
+          ) => `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/25 text-primary px-2 py-1 text-[11px] font-extrabold max-w-full">
+            <span class="break-all">${esc(po)}</span>
+            <button type="button" class="w-5 h-5 rounded-full bg-primary/10 hover:bg-primary/20 leading-none shrink-0" onclick="event.stopPropagation(); removePoChoice('${poEncode(po)}')" title="Hapus PO">×</button>
           </span>`,
         )
         .join("")
@@ -2156,10 +2244,10 @@ function poMultiSelectInput(value = "") {
     <div class="relative">
       <div class="form-input min-h-[48px] flex items-center flex-wrap gap-2 py-2 cursor-text" onclick="document.getElementById('po-search-input')?.focus(); openPoDropdown();">
         <div id="po-selected-chips" class="contents">${chipHtml}</div>
-        <input id="po-search-input" type="text" class="min-w-[220px] flex-1 bg-transparent border-0 outline-none focus:ring-0 p-1 text-on-surface placeholder:text-on-surface-variant/70" placeholder="Cari PO sesuai vendor, klik banyak pilihan, atau paste PO1, PO2" autocomplete="off" onfocus="openPoDropdown()" onblur="closePoDropdownSoon()" oninput="handlePoSearchInput(this)" onkeydown="handlePoSearchKeydown(event)" />
-        <button type="button" class="thin-tab rounded-md px-3 py-2 text-[11px] font-extrabold" onclick="event.stopPropagation(); addPoFromSearch()">Tambah</button>
+        <input id="po-search-input" type="text" class="min-w-[150px] sm:min-w-[220px] flex-1 bg-transparent border-0 outline-none focus:ring-0 p-1 text-on-surface placeholder:text-on-surface-variant/70 text-sm sm:text-base" placeholder="Cari PO sesuai vendor..." autocomplete="off" onfocus="openPoDropdown()" onblur="closePoDropdownSoon()" oninput="handlePoSearchInput(this)" onkeydown="handlePoSearchKeydown(event)" />
+        <button type="button" class="thin-tab rounded-md px-3 py-2 text-[11px] font-extrabold shrink-0" onclick="event.stopPropagation(); addPoFromSearch()">Tambah</button>
       </div>
-      <div id="po-dropdown" class="hidden absolute z-50 left-0 right-0 mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl max-h-[320px] overflow-y-auto p-2">
+      <div id="po-dropdown" class="hidden absolute z-50 left-0 right-0 mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl max-h-[60vh] sm:max-h-[320px] overflow-y-auto p-2">
         <div id="po-dropdown-list"></div>
       </div>
     </div>
