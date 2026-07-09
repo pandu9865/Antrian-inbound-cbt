@@ -1346,6 +1346,12 @@ async function submitSecurity(e) {
       newRows.push(row);
     }
 
+    // Buka popup print di event klik yang sama supaya tidak diblokir browser.
+    const printWindow =
+      typeof openSecurityPrintWindow === "function"
+        ? openSecurityPrintWindow("Menyimpan ticket dan menyiapkan print...")
+        : null;
+
     // Local fallback tetap disimpan supaya UI langsung punya data walau backend lambat.
     rows.unshift(...newRows);
     saveLocalTickets(rows);
@@ -1367,6 +1373,12 @@ async function submitSecurity(e) {
         );
       } catch (err) {}
 
+      // Auto popup print setelah ticket berhasil tersimpan.
+      // Pakai savedRows supaya nomor antrian di Daftar, Checker, dan QR tetap sama.
+      if (typeof printSecurityTickets === "function") {
+        printSecurityTickets(savedRows, printWindow);
+      }
+
       upsertOutputRowsToRawResponse(savedRows);
       state.dashboard = buildDashboardFromV2(v2RawResponse);
       state.options = state.dashboard.options || state.options;
@@ -1385,6 +1397,12 @@ async function submitSecurity(e) {
         state.dashboard.report_preview.unshift(...newRows);
       }
 
+      if (typeof showSecurityPrintError === "function") {
+        showSecurityPrintError(
+          printWindow,
+          "Backend gagal menyimpan ticket: " + err.message,
+        );
+      }
       showToast("Backend gagal, ticket tersimpan lokal: " + err.message);
     }
 

@@ -897,14 +897,81 @@ function securityFormMatchesRowsForPrint(rows = []) {
   );
 }
 
-function printSecurityTickets() {
+function openSecurityPrintWindow(
+  message = "Menyiapkan print nomor antrian...",
+) {
+  const win = window.open("", "_blank", "width=560,height=760");
+  if (!win) {
+    showToast("Popup print diblokir browser. Allow popup dulu.");
+    return null;
+  }
+
+  win.document.open();
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Print Nomor Antrian</title>
+<style>
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; display:flex; min-height:100vh; align-items:center; justify-content:center; background:#f8fafc; color:#111827; }
+  .box { text-align:center; padding:28px; border:1px solid #d1d5db; border-radius:18px; background:white; box-shadow:0 20px 60px rgba(15,23,42,.15); }
+  .spinner { width:42px; height:42px; border:4px solid #dbeafe; border-top-color:#2563eb; border-radius:999px; margin:0 auto 16px; animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h1 { font-size:18px; margin:0 0 8px; }
+  p { margin:0; color:#64748b; font-size:13px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <h1>${esc(message)}</h1>
+    <p>Jangan tutup tab ini.</p>
+  </div>
+</body>
+</html>`);
+  win.document.close();
+  return win;
+}
+
+function showSecurityPrintError(
+  win,
+  message = "Gagal menyiapkan print nomor antrian.",
+) {
+  if (!win || win.closed) return;
+  win.document.open();
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Print Error</title>
+<style>
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; display:flex; min-height:100vh; align-items:center; justify-content:center; background:#fff7ed; color:#111827; }
+  .box { text-align:center; max-width:420px; padding:28px; border:1px solid #fed7aa; border-radius:18px; background:white; box-shadow:0 20px 60px rgba(15,23,42,.15); }
+  h1 { color:#ea580c; font-size:20px; margin:0 0 10px; }
+  p { color:#64748b; font-size:13px; line-height:1.5; }
+  button { margin-top:16px; padding:10px 16px; border-radius:10px; border:0; background:#ea580c; color:white; font-weight:800; cursor:pointer; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Print gagal</h1>
+    <p>${esc(message)}</p>
+    <button onclick="window.close()">Tutup</button>
+  </div>
+</body>
+</html>`);
+  win.document.close();
+}
+
+function printSecurityTickets(rowsOverride = null, winOverride = null) {
+  const hasOverrideRows = Array.isArray(rowsOverride) && rowsOverride.length;
   const existingRows = getLastSecurityRowsForPrint();
-  let rows = existingRows;
+  let rows = hasOverrideRows ? rowsOverride : existingRows;
 
   // Kalau belum pernah klik Buat Nomor, print bisa ambil langsung dari form yang sudah lengkap.
   // Kalau sudah klik Buat Nomor dan form masih sama, pakai row actual supaya queue_no QR tidak berubah.
   const form = document.getElementById("security-form");
-  if (form) {
+  if (!hasOverrideRows && form) {
     if (existingRows.length && securityFormMatchesRowsForPrint(existingRows)) {
       rows = existingRows;
     } else {
@@ -925,6 +992,12 @@ function printSecurityTickets() {
     showToast("Belum ada data untuk diprint.");
     return;
   }
+
+  // Simpan baris actual terakhir supaya print manual berikutnya tetap konsisten.
+  state.lastSecurityRows = rows;
+  try {
+    localStorage.setItem("inbound_cbt_last_print_rows", JSON.stringify(rows));
+  } catch (err) {}
 
   const now = formatDateTimeLocal(new Date());
   const cards = rows
@@ -992,7 +1065,11 @@ function printSecurityTickets() {
 <body>${cards}<script>window.onload = () => { window.print(); setTimeout(() => window.close(), 700); };</script></body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=560,height=760");
+  const win =
+    winOverride && !winOverride.closed
+      ? winOverride
+      : window.open("", "_blank", "width=560,height=760");
+
   if (!win) {
     showToast("Popup print diblokir browser. Allow popup dulu.");
     return;
