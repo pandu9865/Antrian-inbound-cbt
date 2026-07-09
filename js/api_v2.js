@@ -75,6 +75,34 @@ async function apiGetV2(action = "raw", params = {}) {
   return json.data || json;
 }
 
+async function apiPostV2(action, payload = {}) {
+  if (!hasApiV2()) throw new Error("API_URL_V2 belum diganti.");
+  const res = await fetch(apiUrlV2(action), {
+    method: "POST",
+    redirect: "follow",
+    body: JSON.stringify({
+      action,
+      payload,
+      timestamp: new Date().toISOString(),
+    }),
+  });
+
+  const json = await res.json();
+  if (json.status && json.status !== "success") {
+    throw new Error(json.message || "API V2 POST error");
+  }
+  return json.data || json;
+}
+
+async function submitSecurityRowsToBackend(rows = []) {
+  if (!rows.length) return { rows: [] };
+  return apiPostV2("submitSecurity", { rows });
+}
+
+async function updateCheckerToBackend(body = {}) {
+  return apiPostV2("updateChecker", body);
+}
+
 async function fetchV2Data() {
   return apiGetV2("raw");
 }
@@ -209,6 +237,99 @@ function buildQueueFromV2Table(tableRows = []) {
       count_po_sku: toNumberV2(getCell(row, ["Count SKU"])),
       waiting_text: getCell(row, ["Arrive to now", "Active Duration"], ""),
       waiting_minutes: minutesFromCreated(arrived),
+      raw: row,
+    };
+  });
+}
+
+function getOutputFormRows(response) {
+  if (Array.isArray(response?.outputForm)) return response.outputForm;
+  if (Array.isArray(response?.output_form)) return response.output_form;
+  if (Array.isArray(response?.data?.outputForm))
+    return response.data.outputForm;
+  if (Array.isArray(response?.data?.output_form))
+    return response.data.output_form;
+  return [];
+}
+
+function ticketIdentity(row) {
+  const ticketId = String(row?.ticket_id || "").trim();
+  if (ticketId) return "ticket:" + ticketId;
+
+  return [
+    "fallback",
+    String(row?.queue_no || "").trim(),
+    String(row?.po_number || row?.po || "").trim(),
+    normalizePlateValue(row?.plat_number || row?.["Licence Plate"] || ""),
+  ]
+    .join("|")
+    .toUpperCase();
+}
+
+function mergeTicketQueues(serverQueue = [], localQueue = []) {
+  const seen = new Set();
+  const out = [];
+
+  for (const row of serverQueue.concat(localQueue || [])) {
+    const key = ticketIdentity(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+
+  return out;
+}
+
+function buildQueueFromOutputForm(outputRows = []) {
+  return outputRows.map((row, idx) => {
+    const created = getCell(row, ["created_at", "register_time", "Timestamp"]);
+    const completed = getCell(row, ["completed_at"], "");
+    const status = String(
+      getCell(row, ["status"], "WAITING") || "WAITING",
+    ).toUpperCase();
+    const plate = normalizePlateValue(
+      getCell(row, ["plat_number", "Licence Plate", "license_plate"], ""),
+    );
+
+    return {
+      source: getCell(row, ["source"], "OUTPUT_FORM"),
+      row_no: idx + 2,
+      ticket_id: getCell(row, ["ticket_id"], ""),
+      queue_no: getCell(
+        row,
+        ["queue_no"],
+        `REG ${getCell(row, ["slot"], "3")}-${idx + 1}`,
+      ),
+      ticket_type: getCell(row, ["ticket_type"], "REG"),
+      slot: String(getCell(row, ["slot"], "3") || "3"),
+      created_at: created,
+      register_time: getCell(row, ["register_time"], created),
+      completed_at: completed,
+      called_at: getCell(row, ["called_at"], ""),
+      updated_at: getCell(row, ["updated_at"], ""),
+      vendor_name: getCell(row, ["vendor_name", "Vendor Name"], ""),
+      fleet_type: getCell(
+        row,
+        ["fleet_type", "Vhiecle Type", "Vehicle Type"],
+        "",
+      ),
+      plat_number: plate,
+      driver_name: getCell(row, ["driver_name"], ""),
+      phone_number: getCell(row, ["phone_number"], ""),
+      ktp_6_digit: getCell(row, ["ktp_6_digit"], ""),
+      po_number: getCell(row, ["po_number", "po"], ""),
+      gate: getCell(row, ["gate"], "-") || "-",
+      status,
+      po_status: getCell(row, ["po_status"], ""),
+      arrival_status: getCell(row, ["arrival_status"], ""),
+      unload_sla: getCell(row, ["unload_sla"], ""),
+      total_po_qty: toNumberV2(
+        getCell(row, ["total_po_qty", "total_request_quantity"], 0),
+      ),
+      actual_quantity: toNumberV2(getCell(row, ["actual_quantity"], 0)),
+      count_po_sku: toNumberV2(getCell(row, ["count_po_sku", "Count SKU"], 0)),
+      waiting_text: getCell(row, ["waiting_text"], ""),
+      waiting_minutes: minutesFromCreated(created),
       raw: row,
     };
   });
@@ -412,11 +533,14 @@ function getKpiRawRows(response) {
 function buildDashboardFromV2(response) {
   const tableRows = getTableV2Rows(response);
   const kpiRaw = getKpiRawRows(response);
+  const outputRows = getOutputFormRows(response);
   v2PoIndex = buildPoIndex(tableRows);
 
-  const rawQueue = buildQueueFromV2Table(tableRows);
+  // Data V2 hanya dipakai untuk PO lookup/options.
+  // Queue/Checker wajib dari hasil input Security: Output form + local fallback.
+  const serverQueue = buildQueueFromOutputForm(outputRows);
   const localQueue = getLocalTickets();
-  const queue = localQueue.concat(rawQueue);
+  const queue = mergeTicketQueues(serverQueue, localQueue);
   const summary = buildSummary(kpiRaw, tableRows, queue);
   const kpis = buildKpis(kpiRaw, tableRows, queue);
 
@@ -448,6 +572,7 @@ function buildDashboardFromV2(response) {
     raw: {
       kpiRaw,
       tablev2: tableRows,
+      outputForm: outputRows,
       table: Array.isArray(response?.table) ? response.table : [],
     },
     options: buildOptionsFromV2(tableRows),
@@ -590,6 +715,24 @@ function updatePoLookupUi(lookup) {
   }
 }
 
+function nextLocalQueueNoFromList(ticketType, slot, queue = []) {
+  const type = String(ticketType || "REG").toUpperCase();
+  const slotText = String(slot || "3");
+
+  if (type === "DROP") {
+    const count =
+      queue.filter((q) => String(q.queue_no || "").startsWith("DROP")).length +
+      1;
+    return `DROP-${count}`;
+  }
+
+  const count =
+    queue.filter((q) =>
+      String(q.queue_no || "").startsWith(`${type} ${slotText}-`),
+    ).length + 1;
+  return `${type} ${slotText}-${count}`;
+}
+
 function nextLocalQueueNo(ticketType, slot) {
   const queue = (state.dashboard?.queue || []).concat(getLocalTickets());
   return nextLocalQueueNoFromList(ticketType, slot, queue);
@@ -645,7 +788,7 @@ function nextLocalQueueNo(ticketType, slot) {
   return `${type} ${slotText}-${count}`;
 }
 
-function submitSecurity(e) {
+async function submitSecurity(e) {
   e.preventDefault();
   const form = e.target;
   if (!validateSecurityForm(form)) return;
@@ -680,6 +823,11 @@ function submitSecurity(e) {
 
     const row = {
       ...base,
+      ticket_id:
+        "IBT-" +
+        Date.now().toString(36).toUpperCase() +
+        "-" +
+        String(newRows.length + 1).padStart(2, "0"),
       po_number: item.po_number,
       po_numbers: lookup.summary.po_numbers,
       vendor_name: item.vendor_name || base.vendor_name || "",
@@ -696,7 +844,8 @@ function submitSecurity(e) {
         queuePool.concat(newRows),
       ),
       gate: "-",
-      source: "LOCAL_SECURITY",
+      unload_sla: "",
+      source: "SECURITY_INPUT",
     };
 
     newRows.push(row);
@@ -705,21 +854,32 @@ function submitSecurity(e) {
   rows.unshift(...newRows);
   saveLocalTickets(rows);
 
-  if (v2RawResponse) {
+  try {
+    showToast("Menyimpan ticket ke Output form...");
+    await submitSecurityRowsToBackend(newRows);
+    v2RawResponse = await fetchV2Data();
     state.dashboard = buildDashboardFromV2(v2RawResponse);
     state.options = state.dashboard.options || state.options;
-  } else {
-    state.dashboard.queue.unshift(...newRows);
-    state.dashboard.report_preview.unshift(...newRows);
+    showToast(`${newRows.length} ticket masuk Output form`);
+  } catch (err) {
+    console.error(err);
+    if (v2RawResponse) {
+      state.dashboard = buildDashboardFromV2(v2RawResponse);
+      state.options = state.dashboard.options || state.options;
+    } else {
+      state.dashboard.queue.unshift(...newRows);
+      state.dashboard.report_preview.unshift(...newRows);
+    }
+    showToast("Backend gagal, ticket tersimpan lokal: " + err.message);
   }
 
   state.lastCalled = newRows[0];
-  document.getElementById("new-queue-number").textContent = newRows[0].queue_no;
-  showToast(`${newRows.length} ticket dibuat dari ${poItems.length} PO`);
-  renderPage("daftar", false);
+  const queueEl = document.getElementById("new-queue-number");
+  if (queueEl) queueEl.textContent = newRows[0].queue_no;
+  renderPage("checker", false);
 }
 
-function submitChecker(e) {
+async function submitChecker(e) {
   e.preventDefault();
   const form = e.target;
   const requiredOk = validateRequiredFields(form);
@@ -731,33 +891,42 @@ function submitChecker(e) {
 
   const body = Object.fromEntries(new FormData(form).entries());
   body.plat_number = normalizePlateValue(body.plat_number);
+  body.updated_at = formatDateTimeLocal(new Date());
+  body.completed_at = String(body.status || "")
+    .toUpperCase()
+    .includes("COMPLETED")
+    ? formatDateTimeLocal(new Date())
+    : "";
 
   const local = getLocalTickets();
   let updated = false;
   for (const row of local) {
     if (normalizePlateValue(row.plat_number) === body.plat_number) {
       Object.assign(row, body, {
-        updated_at: formatDateTimeLocal(new Date()),
-        completed_at: String(body.status || "")
-          .toUpperCase()
-          .includes("COMPLETED")
-          ? formatDateTimeLocal(new Date())
-          : row.completed_at || "",
+        completed_at: body.completed_at || row.completed_at || "",
       });
       updated = true;
     }
   }
   saveLocalTickets(local);
 
-  if (v2RawResponse) {
+  try {
+    await updateCheckerToBackend(body);
+    v2RawResponse = await fetchV2Data();
     state.dashboard = buildDashboardFromV2(v2RawResponse);
+    showToast("Checker tersimpan ke Output form");
+  } catch (err) {
+    console.error(err);
+    if (v2RawResponse) {
+      state.dashboard = buildDashboardFromV2(v2RawResponse);
+    }
+    showToast(
+      updated
+        ? "Checker tersimpan lokal, backend gagal: " + err.message
+        : "Checker backend gagal: " + err.message,
+    );
   }
 
-  showToast(
-    updated
-      ? "Checker tersimpan lokal"
-      : "Plat dari Data V2 tidak bisa disimpan ke backend read-only",
-  );
   renderPage("checker", false);
 }
 
@@ -810,7 +979,9 @@ async function loadDebug() {
         ? v2RawResponse.table.length
         : 0,
       tablev2_rows: getTableV2Rows(v2RawResponse).length || 0,
+      output_form_rows: getOutputFormRows(v2RawResponse).length || 0,
       tablev2_sample: getTableV2Rows(v2RawResponse).slice(0, 3),
+      output_form_sample: getOutputFormRows(v2RawResponse).slice(0, 5),
       table_old_sample: (Array.isArray(v2RawResponse.table)
         ? v2RawResponse.table
         : []

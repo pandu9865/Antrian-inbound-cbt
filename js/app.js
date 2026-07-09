@@ -519,7 +519,7 @@ function getFleetNote(type) {
   const map = {
     WINGBOX: "Truck wingbox / box besar",
     "WING BOX": "Truck wingbox / box besar",
-    CDD: "Colt Diesel Double Meliputi kendaraan CDE",
+    CDD: "Colt Diesel Double",
     CDDL: "CDD Long / extended cargo",
     "L300/PICK UP": "L300 / pickup cargo",
     "L300 / PICK UP": "L300 / pickup cargo",
