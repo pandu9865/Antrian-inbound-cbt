@@ -656,7 +656,7 @@
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 ${textInput("po_number", "PO Number", "ID1/POR/...", "po-list", lookup?.summary?.po_number, 'required oninput="schedulePoLookup()" onblur="lookupPo(true)" autocomplete="off"')}
                 ${textInput("vendor_name", "Vendor Name", "Auto dari PO", "vendor-list", lookup?.summary?.vendor_name, "required")}
-                ${selectInput("ticket_type", "Tipe Tiket", ["REG", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
+                ${selectInput("ticket_type", "Tipe Tiket", ["REG", "VIP", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
                 ${selectInput("slot", "Slot", buildSlotOptions(lookup?.summary?.slot), lookup?.summary?.slot || "3", "required")}
                 ${selectInput("fleet_type", "Fleet Type", o.fleet_type, "", "required")}
                 ${textInput("plat_number", "Plat Number", "Contoh: B 1234 XYZ → B1234XYZ", "", "", 'required oninput="normalizePlateInput(this)" onblur="normalizePlateInput(this); validatePlateInput(this)" autocomplete="off"')}
