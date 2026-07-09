@@ -565,18 +565,311 @@ function getLastSecurityRowsForPrint() {
   }
 }
 
+function encodeDriverTicketPayload(row = {}) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(row))));
+  } catch (err) {
+    return "";
+  }
+}
+
+function decodeDriverTicketPayload(value = "") {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(String(value || "")))));
+  } catch (err) {
+    return {};
+  }
+}
+
+function getDriverTicketPayloadFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const raw = params.get("driver_ticket") || params.get("ticket") || "";
+  return decodeDriverTicketPayload(raw);
+}
+
+function isDriverTrackMode() {
+  const params = new URLSearchParams(location.search);
+  return params.has("driver_ticket") || params.has("ticket");
+}
+
+function makeDriverTrackUrl(row = {}) {
+  const payload = {
+    ticket_id: row.ticket_id || "",
+    queue_no: row.queue_no || "",
+    vendor_name: row.vendor_name || "",
+    po_number: row.po_number || "",
+    plat_number: row.plat_number || "",
+    driver_name: row.driver_name || "",
+    fleet_type: row.fleet_type || "",
+    gate: row.gate || "-",
+    status: row.status || "WAITING",
+    register_time:
+      row.register_time || row.created_at || formatDateTimeLocal(new Date()),
+    created_at:
+      row.created_at || row.register_time || formatDateTimeLocal(new Date()),
+  };
+  const url = new URL(location.origin + location.pathname);
+  url.searchParams.set("driver_ticket", encodeDriverTicketPayload(payload));
+  return url.toString();
+}
+
+function qrImageUrl(text = "") {
+  return (
+    "https://quickchart.io/qr?size=180&margin=1&text=" +
+    encodeURIComponent(text)
+  );
+}
+
+function findDriverTicketRow(payload = {}) {
+  const rows = state.dashboard?.queue || [];
+  const ticketId = String(payload.ticket_id || "").trim();
+  const queueNo = String(payload.queue_no || "").trim();
+  const plate = normalizePlateValue(payload.plat_number || "");
+
+  return (
+    rows.find(
+      (row) => ticketId && String(row.ticket_id || "").trim() === ticketId,
+    ) ||
+    rows.find(
+      (row) =>
+        queueNo &&
+        plate &&
+        String(row.queue_no || "").trim() === queueNo &&
+        normalizePlateValue(row.plat_number || "") === plate,
+    ) ||
+    rows.find(
+      (row) => plate && normalizePlateValue(row.plat_number || "") === plate,
+    ) ||
+    null
+  );
+}
+
+function getDriverTicketEffectiveRow() {
+  const payload = getDriverTicketPayloadFromUrl();
+  return findDriverTicketRow(payload) || payload || {};
+}
+
+function driverWaitingLabel(row = {}) {
+  if (row.completed_at) return "Selesai";
+  return liveWaitingText(row.register_time || row.created_at, row.completed_at);
+}
+
+let driverTrackTimer = null;
+
+function refreshDriverTrackDom() {
+  if (!isDriverTrackMode()) return;
+  const row = getDriverTicketEffectiveRow();
+  const wait = document.getElementById("driver-track-waiting");
+  const status = document.getElementById("driver-track-status");
+  const gate = document.getElementById("driver-track-gate");
+
+  if (wait) wait.textContent = driverWaitingLabel(row);
+  if (status) status.textContent = row.status || "WAITING";
+  if (gate) gate.textContent = row.gate || "-";
+}
+
+function startDriverTrackTimer() {
+  if (driverTrackTimer) clearInterval(driverTrackTimer);
+  refreshDriverTrackDom();
+  driverTrackTimer = setInterval(refreshDriverTrackDom, 1000);
+}
+
+function pageDriverTrack() {
+  const row = getDriverTicketEffectiveRow();
+  const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
+  const status = String(row.status || "WAITING").toUpperCase();
+
+  return `<div class="min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
+    <div class="glass-card rounded-2xl p-6 w-full max-w-[560px] border border-outline-variant/50">
+      <div class="text-center mb-6">
+        <div class="text-[12px] uppercase tracking-[0.35em] text-on-surface-variant font-extrabold">Inbound CBT</div>
+        <h1 class="text-2xl font-extrabold text-on-surface mt-2">Status Antrian Driver</h1>
+        <div class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+          found
+            ? "bg-success/10 text-success border border-success/30"
+            : "bg-warning/10 text-warning border border-warning/30"
+        }">${found ? "LIVE DATA" : "PREVIEW / BELUM SYNC"}</div>
+      </div>
+
+      <div class="text-center border-y border-outline-variant/40 py-6">
+        <div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian</div>
+        <div class="font-queue-id text-[56px] sm:text-[76px] leading-none text-primary font-black mt-3">${esc(row.queue_no || "-")}</div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
+          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Jam Menunggu</div>
+          <div id="driver-track-waiting" class="font-queue-id text-2xl text-tertiary mt-2">${esc(driverWaitingLabel(row))}</div>
+        </div>
+        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
+          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Status</div>
+          <div id="driver-track-status" class="font-bold text-xl mt-2">${esc(status)}</div>
+        </div>
+        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
+          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Gate</div>
+          <div id="driver-track-gate" class="font-bold text-xl mt-2">${esc(row.gate || "-")}</div>
+        </div>
+        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
+          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Plat</div>
+          <div class="font-queue-id text-xl mt-2">${esc(row.plat_number || "-")}</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-2">
+        <div><b class="text-xs uppercase text-on-surface-variant">Driver</b><div class="font-bold">${esc(row.driver_name || "-")}</div></div>
+        <div><b class="text-xs uppercase text-on-surface-variant">Vendor</b><div class="font-bold">${esc(row.vendor_name || "-")}</div></div>
+        <div><b class="text-xs uppercase text-on-surface-variant">PO</b><div class="font-bold break-all">${esc(row.po_number || "-")}</div></div>
+        <div><b class="text-xs uppercase text-on-surface-variant">Register</b><div class="font-bold">${esc(row.register_time || row.created_at || "-")}</div></div>
+      </div>
+
+      <button onclick="location.reload()" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined">refresh</span>Refresh Status
+      </button>
+    </div>
+  </div>`;
+}
+
+function buildSecurityPreviewRowsForPrint() {
+  const form = document.getElementById("security-form");
+  if (!form) return [];
+
+  if (typeof syncPlateMultiInput === "function") syncPlateMultiInput();
+  if (!validateSecurityForm(form)) return [];
+
+  const lookup = lookupPo(true);
+  if (!lookup || !lookup.all_found) {
+    showToast("PO wajib valid dan sesuai Vendor Name sebelum print.");
+    return [];
+  }
+
+  const base = Object.fromEntries(new FormData(form).entries());
+  const poItems = lookup.items || [];
+  const registeredSet =
+    typeof getRegisteredPoSetApi === "function"
+      ? getRegisteredPoSetApi()
+      : getRegisteredPoSet();
+  const duplicatedPo = poItems
+    .map((item) => item.po_number || item.po_input)
+    .filter((po) => registeredSet.has(normalizeKey(po)));
+
+  if (duplicatedPo.length) {
+    showToast(
+      "PO sudah daftar dan tidak bisa diprint ulang: " +
+        duplicatedPo.join(", "),
+    );
+    return [];
+  }
+
+  const plateList = parseMultiPlateValues(base.plat_number);
+  const driverList = parseMultiInputValues(base.driver_name);
+  const phoneList = parseMultiInputValues(base.phone_number);
+
+  if (!plateList.length || !driverList.length || !phoneList.length) {
+    showToast("Plat, driver, dan phone wajib lengkap sebelum print.");
+    return [];
+  }
+
+  const poGroups =
+    typeof splitPoItemsByPlate === "function"
+      ? splitPoItemsByPlate(poItems, plateList.length)
+      : [poItems];
+
+  const queuePool = (state.dashboard?.queue || []).concat(
+    getLocalTickets?.() || [],
+  );
+  const registerTime = base.register_time || formatDateTimeLocal(new Date());
+  const rows = [];
+
+  for (const [index, plate] of plateList.entries()) {
+    const groupItems = poGroups[index] || poItems;
+    const grouped =
+      typeof sumPoItems === "function"
+        ? sumPoItems(groupItems)
+        : {
+            po_number: groupItems.map((x) => x.po_number).join(", "),
+            po_numbers: groupItems.map((x) => x.po_number),
+            vendor_name: groupItems[0]?.vendor_name || base.vendor_name || "",
+            total_po_qty: groupItems.reduce(
+              (sum, x) => sum + toNumberV2(x.total_po_qty),
+              0,
+            ),
+            count_po_sku: groupItems.reduce(
+              (sum, x) => sum + toNumberV2(x.count_po_sku),
+              0,
+            ),
+            slot: String(groupItems[0]?.slot || "3"),
+          };
+
+    const rowSlot =
+      String(base.ticket_type || "").toUpperCase() === "DROP"
+        ? base.slot || grouped.slot || "3"
+        : grouped.slot || base.slot || "3";
+
+    const row = {
+      ...base,
+      ticket_id:
+        "IBT-PREVIEW-" +
+        Date.now().toString(36).toUpperCase() +
+        "-" +
+        String(index + 1).padStart(2, "0"),
+      po_number: grouped.po_number,
+      po_numbers: grouped.po_numbers,
+      vendor_name: base.vendor_name || grouped.vendor_name || "",
+      slot: rowSlot,
+      plat_number: plate,
+      driver_name: pickMultiValue(driverList, index),
+      phone_number: pickMultiValue(phoneList, index),
+      status: "WAITING",
+      total_po_qty: grouped.total_po_qty,
+      count_po_sku: grouped.count_po_sku,
+      created_at: registerTime,
+      register_time: registerTime,
+      queue_no: nextLocalQueueNoFromList(
+        base.ticket_type,
+        rowSlot,
+        queuePool.concat(rows),
+      ),
+      gate: "-",
+      unload_sla: "",
+      source: "SECURITY_PRINT_PREVIEW",
+    };
+
+    rows.push(row);
+  }
+
+  return rows;
+}
+
 function printSecurityTickets() {
-  const rows = getLastSecurityRowsForPrint();
+  let rows = getLastSecurityRowsForPrint();
+
+  // Kalau belum pernah klik Buat Nomor, print bisa ambil langsung dari form yang sudah lengkap.
+  const form = document.getElementById("security-form");
+  if (form) {
+    const previewRows = buildSecurityPreviewRowsForPrint();
+    if (!previewRows.length) return;
+    rows = previewRows;
+    state.lastSecurityRows = previewRows;
+    try {
+      localStorage.setItem(
+        "inbound_cbt_last_print_rows",
+        JSON.stringify(previewRows),
+      );
+    } catch (err) {}
+  }
 
   if (!rows.length) {
-    showToast("Belum ada hasil input untuk diprint.");
+    showToast("Belum ada data untuk diprint.");
     return;
   }
 
   const now = formatDateTimeLocal(new Date());
   const cards = rows
-    .map(
-      (r) => `<div class="ticket">
+    .map((r) => {
+      const trackUrl = makeDriverTrackUrl(r);
+      const qrUrl = qrImageUrl(trackUrl);
+
+      return `<div class="ticket">
         <div class="ticket-head">
           <div>
             <div class="brand">Inbound CBT</div>
@@ -585,20 +878,26 @@ function printSecurityTickets() {
           <div class="status">${esc(r.status || "WAITING")}</div>
         </div>
         <div class="queue">${esc(r.queue_no || "-")}</div>
-        <div class="grid">
-          <div><b>Vendor</b><span>${esc(r.vendor_name || "-")}</span></div>
-          <div><b>PO</b><span>${esc(r.po_number || "-")}</span></div>
-          <div><b>Plat</b><span>${esc(r.plat_number || "-")}</span></div>
-          <div><b>Driver</b><span>${esc(r.driver_name || "-")}</span></div>
-          <div><b>Fleet</b><span>${esc(r.fleet_type || "-")}</span></div>
-          <div><b>Slot</b><span>${esc(r.slot || "-")}</span></div>
-          <div><b>Total Qty</b><span>${esc(num(r.total_po_qty || 0))}</span></div>
-          <div><b>Count SKU</b><span>${esc(num(r.count_po_sku || 0))}</span></div>
-          <div><b>Register</b><span>${esc(r.register_time || r.created_at || "-")}</span></div>
-          <div><b>Print Time</b><span>${esc(now)}</span></div>
+        <div class="main">
+          <div class="grid">
+            <div><b>Vendor</b><span>${esc(r.vendor_name || "-")}</span></div>
+            <div><b>PO</b><span>${esc(r.po_number || "-")}</span></div>
+            <div><b>Plat</b><span>${esc(r.plat_number || "-")}</span></div>
+            <div><b>Driver</b><span>${esc(r.driver_name || "-")}</span></div>
+            <div><b>Fleet</b><span>${esc(r.fleet_type || "-")}</span></div>
+            <div><b>Slot</b><span>${esc(r.slot || "-")}</span></div>
+            <div><b>Total Qty</b><span>${esc(num(r.total_po_qty || 0))}</span></div>
+            <div><b>Count SKU</b><span>${esc(num(r.count_po_sku || 0))}</span></div>
+            <div><b>Register</b><span>${esc(r.register_time || r.created_at || "-")}</span></div>
+            <div><b>Print Time</b><span>${esc(now)}</span></div>
+          </div>
+          <div class="qrbox">
+            <img src="${esc(qrUrl)}" alt="QR Driver Status" />
+            <div>Scan untuk lihat status antrian & jam menunggu</div>
+          </div>
         </div>
-      </div>`,
-    )
+      </div>`;
+    })
     .join("");
 
   const html = `<!DOCTYPE html>
@@ -615,18 +914,22 @@ function printSecurityTickets() {
   .brand { font-weight: 900; font-size: 20px; letter-spacing: .02em; }
   .sub { color: #6b7280; font-size: 12px; margin-top: 2px; text-transform: uppercase; letter-spacing: .12em; }
   .status { border: 1px solid #f97316; color: #ea580c; background: #fff7ed; font-weight: 900; border-radius: 999px; padding: 7px 11px; font-size: 12px; }
-  .queue { text-align: center; font-family: "Courier New", monospace; font-size: 64px; line-height: 1; color: #1d4ed8; font-weight: 900; margin: 22px 0; letter-spacing: .04em; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .grid div { border: 1px solid #d1d5db; border-radius: 10px; padding: 8px; min-height: 52px; }
+  .queue { text-align: center; font-family: "Courier New", monospace; font-size: 60px; line-height: 1; color: #1d4ed8; font-weight: 900; margin: 18px 0; letter-spacing: .04em; }
+  .main { display: grid; grid-template-columns: 1fr 145px; gap: 12px; align-items: start; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid div { border: 1px solid #d1d5db; border-radius: 10px; padding: 8px; min-height: 50px; }
   b { display: block; font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
-  span { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+  span { font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+  .qrbox { border: 1px solid #d1d5db; border-radius: 12px; padding: 8px; text-align: center; }
+  .qrbox img { width: 128px; height: 128px; object-fit: contain; display: block; margin: 0 auto 6px; }
+  .qrbox div { font-size: 9px; color: #374151; font-weight: 700; line-height: 1.25; }
   @media print { .ticket { margin-bottom: 10mm; } }
 </style>
 </head>
-<body>${cards}<script>window.onload = () => { window.print(); setTimeout(() => window.close(), 600); };</script></body>
+<body>${cards}<script>window.onload = () => { window.print(); setTimeout(() => window.close(), 700); };</script></body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=520,height=720");
+  const win = window.open("", "_blank", "width=560,height=760");
   if (!win) {
     showToast("Popup print diblokir browser. Allow popup dulu.");
     return;
@@ -682,7 +985,7 @@ function pageDaftar() {
             <span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span>
           </button>
           <button type="button" onclick="printSecurityTickets()" class="thin-tab rounded-lg px-6 py-3 font-bold flex items-center justify-center gap-2">
-            <span class="material-symbols-outlined">print</span>Print Nomor Terakhir
+            <span class="material-symbols-outlined">print</span>Print Nomor / QR
           </button>
         </div>
       </form>
@@ -2719,6 +3022,18 @@ function renderPage(page, toast = true) {
     setting: pageSetting,
     debug: pageDebug,
   };
+
+  // Public page untuk QR driver, tidak perlu login.
+  if (isDriverTrackMode()) {
+    state.page = "driver-track";
+    document.getElementById("page-title").textContent = "Status Driver";
+    document.getElementById("page-subtitle").textContent = "Scan QR antrian";
+    root.innerHTML = pageDriverTrack();
+    applyRoleAccessUI();
+    startDriverTrackTimer();
+    history.replaceState(null, "", location.pathname + location.search);
+    return;
+  }
 
   if (!isLoggedIn()) {
     state.page = "login";
