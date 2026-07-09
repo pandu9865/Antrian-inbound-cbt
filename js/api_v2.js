@@ -809,7 +809,10 @@ async function initApi() {
     v2RawResponse = await fetchV2Data();
     state.dashboard = buildDashboardFromV2(v2RawResponse);
     state.options = state.dashboard.options || state.options;
-    state.lastCalled = state.dashboard.queue[0] || state.lastCalled;
+    state.lastCalled =
+      typeof getLatestCallTicket === "function"
+        ? getLatestCallTicket(state.dashboard.queue)
+        : state.dashboard.queue[0] || state.lastCalled;
     updateApiPill("on", "API live");
     renderPage(state.page || "daftar", false);
   } catch (err) {
@@ -822,7 +825,9 @@ async function initApi() {
 async function refreshDashboard() {
   try {
     if (
-      ["checker", "laporan", "monitor", "antrian"].includes(state.page) &&
+      ["checker", "laporan", "monitor", "antrian", "panggil"].includes(
+        state.page,
+      ) &&
       v2RawResponse
     ) {
       updateApiPill("loading", "Refresh Output form...");
@@ -834,6 +839,10 @@ async function refreshDashboard() {
       };
       state.dashboard = buildDashboardFromV2(v2RawResponse);
       state.options = state.dashboard.options || state.options;
+      state.lastCalled =
+        typeof getLatestCallTicket === "function"
+          ? getLatestCallTicket(state.dashboard.queue)
+          : state.dashboard.queue[0] || state.lastCalled;
       updateApiPill("on", "API live");
       renderPage(state.page || "checker", false);
       showToast("Output form refresh");
@@ -1236,23 +1245,27 @@ async function submitChecker(e) {
 
   const body = Object.fromEntries(new FormData(form).entries());
 
-  // Kalau status sudah UNLOADING, gate dikunci/disabled.
-  // FormData tidak mengambil disabled select, jadi gate diambil manual dari value/dataset.
+  // Kalau gate terkunci/disabled, FormData tidak mengambil select gate.
   if (!body.gate && form.gate) {
     body.gate = form.gate.dataset.lockedGate || form.gate.value || "Dock 01";
   }
 
   body.plat_number = normalizePlateValue(body.plat_number);
 
-  const targetStatus = String(body.status || "UNLOADING")
-    .toUpperCase()
-    .includes("COMPLETED")
+  const requested = String(body.status || "CALLED").toUpperCase();
+  const targetStatus = requested.includes("COMPLETED")
     ? "COMPLETED"
-    : "UNLOADING";
+    : requested.includes("UNLOADING")
+      ? "UNLOADING"
+      : "CALLED";
 
   body.status = targetStatus;
   body.unload_sla = targetStatus === "COMPLETED" ? "SLA OK" : "ON PROCESS";
   body.updated_at = formatDateTimeLocal(new Date());
+  body.called_at =
+    targetStatus === "CALLED"
+      ? formatDateTimeLocal(new Date())
+      : body.called_at || "";
   body.completed_at =
     targetStatus === "COMPLETED" ? formatDateTimeLocal(new Date()) : "";
 
@@ -1270,6 +1283,10 @@ async function submitChecker(e) {
       Object.assign(row, body, {
         status: targetStatus,
         unload_sla: body.unload_sla,
+        called_at:
+          targetStatus === "CALLED"
+            ? body.called_at
+            : row.called_at || body.called_at || "",
         completed_at: body.completed_at || "",
       });
       updatedLocal = true;
@@ -1280,10 +1297,13 @@ async function submitChecker(e) {
   const optimisticRow = buildUpdatedOutputRowFromBody(body);
   const updatedUi = applyCheckerUpdateToQueue(body);
 
-  // Update raw response secara optimistic supaya status langsung berubah dan timer berhenti.
   if (v2RawResponse) {
     replaceOutputRowsInRawResponse([optimisticRow]);
     state.dashboard = buildDashboardFromV2(v2RawResponse);
+    state.lastCalled =
+      typeof getLatestCallTicket === "function"
+        ? getLatestCallTicket(state.dashboard.queue)
+        : state.lastCalled;
   }
 
   try {
@@ -1292,16 +1312,22 @@ async function submitChecker(e) {
       replaceOutputRowsInRawResponse(result.rows);
       state.dashboard = buildDashboardFromV2(v2RawResponse);
     } else if (v2RawResponse) {
-      // Jika backend tidak return row, pakai optimistic row yang sudah benar.
       replaceOutputRowsInRawResponse([optimisticRow]);
       state.dashboard = buildDashboardFromV2(v2RawResponse);
     }
 
-    showToast(
-      targetStatus === "COMPLETED"
-        ? "Status berubah menjadi SELESAI UNLOADING"
-        : "Gate tersimpan, status otomatis UNLOADING",
-    );
+    state.lastCalled =
+      typeof getLatestCallTicket === "function"
+        ? getLatestCallTicket(state.dashboard.queue)
+        : state.lastCalled;
+
+    if (targetStatus === "CALLED") {
+      showToast("Nomor dipanggil ke monitor TV");
+    } else if (targetStatus === "UNLOADING") {
+      showToast("Status berubah menjadi UNLOADING");
+    } else {
+      showToast("Status berubah menjadi SELESAI UNLOADING");
+    }
   } catch (err) {
     console.error(err);
     showToast(
@@ -1312,6 +1338,31 @@ async function submitChecker(e) {
   }
 
   renderPage("checker", false);
+}
+
+async function refreshCallMonitorData(renderAfter = false) {
+  if (!hasApiV2() || !v2RawResponse) return;
+
+  try {
+    const outputResponse = await fetchOutputFormData();
+    v2RawResponse = {
+      ...v2RawResponse,
+      timestamp: outputResponse?.timestamp || new Date().toISOString(),
+      outputForm: getOutputFormRows(outputResponse),
+    };
+    state.dashboard = buildDashboardFromV2(v2RawResponse);
+    state.options = state.dashboard.options || state.options;
+    state.lastCalled =
+      typeof getLatestCallTicket === "function"
+        ? getLatestCallTicket(state.dashboard.queue)
+        : state.dashboard.queue[0] || state.lastCalled;
+
+    if (renderAfter && state.page === "panggil") {
+      renderPage("panggil", false);
+    }
+  } catch (err) {
+    console.error("refreshCallMonitorData error", err);
+  }
 }
 
 function callNext(btn) {
@@ -1347,6 +1398,10 @@ function callNext(btn) {
 }
 
 function recall() {
+  if (typeof recallVoice === "function") {
+    recallVoice();
+    return;
+  }
   showToast("Panggil ulang " + (state.lastCalled?.queue_no || "-"));
 }
 
@@ -1418,6 +1473,7 @@ window.addEventListener("hashchange", () =>
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   if (typeof initSidebarVisibility === "function") initSidebarVisibility();
+  if (typeof initTvModeListeners === "function") initTvModeListeners();
   setInterval(tickClock, 1000);
   tickClock();
   initShader();

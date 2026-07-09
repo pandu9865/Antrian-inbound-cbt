@@ -330,30 +330,27 @@ function pageDaftar() {
 function pageChecker() {
   const o = state.options;
   const rows = state.dashboard?.queue || [];
-  const vendors = [
-    ...new Set(rows.map((r) => r.vendor_name).filter(Boolean)),
-  ].sort();
   return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
     <div class="xl:col-span-7 glass-card rounded-xl p-6">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
         <div>
           <h3 class="font-headline-md text-headline-md mb-1">List Security</h3>
-          <p class="text-on-surface-variant">Urutan otomatis berdasarkan slot: Slot 1 selesai dulu, lalu Slot 2, dan seterusnya.</p>
+          <p class="text-on-surface-variant">Pilih data, isi Gate, lalu simpan. Data otomatis tampil di monitor Panggil dan voice TV.</p>
         </div>
         <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-2 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh</button>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-        <input id="checker-vendor-filter" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter vendor..." list="checker-vendor-list" />
-        <input id="checker-queue-filter" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter no antrian..." />
-        <input id="checker-po-filter" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter PO..." />
+        <input id="checker-filter-vendor" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter vendor..." />
+        <input id="checker-filter-queue" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter no antrian..." />
+        <input id="checker-filter-po" oninput="filterCheckerAdvanced()" class="form-input" placeholder="Filter PO..." />
         <select id="checker-status-filter" class="form-select" onchange="filterCheckerAdvanced()">
           <option value="ALL">Semua Status</option>
           <option value="WAITING">WAITING</option>
+          <option value="CALLED">CALLED</option>
           <option value="UNLOADING">UNLOADING</option>
-          <option value="COMPLETED">SELESAI UNLOADING</option>
+          <option value="COMPLETED">COMPLETED</option>
           <option value="HOLD">HOLD</option>
         </select>
-        <datalist id="checker-vendor-list">${vendors.map((v) => `<option value="${esc(v)}"></option>`).join("")}</datalist>
       </div>
       <div class="overflow-x-auto max-h-[520px] overflow-y-auto border border-outline-variant/30 rounded-lg">
         <table id="checker-security-table" class="w-full text-left">
@@ -368,11 +365,11 @@ function pageChecker() {
     </div>
     <div class="xl:col-span-5 glass-card rounded-xl p-6">
       <h3 class="font-headline-md text-headline-md mb-1">Checker Input</h3>
-      <p class="text-on-surface-variant mb-6">Pilih data dari list. Checker hanya bisa edit Gate. Jika status sudah UNLOADING, pilih lagi lalu simpan untuk ubah menjadi SELESAI UNLOADING.</p>
+      <p class="text-on-surface-variant mb-6">Step: WAITING → CALLED tampil di TV → UNLOADING → SELESAI UNLOADING.</p>
       <form id="checker-form" onsubmit="submitChecker(event)">
         <input type="hidden" name="ticket_id" />
         <input type="hidden" name="queue_no" />
-        <input type="hidden" name="status" value="UNLOADING" />
+        <input type="hidden" name="status" value="CALLED" />
         <input type="hidden" name="unload_sla" value="ON PROCESS" />
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${textInput("vendor_name", "Vendor Name", "Pilih dari list", "", "", "required readonly")}
@@ -382,14 +379,14 @@ function pageChecker() {
           <label class="flex flex-col gap-2 md:col-span-2">
             <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Status Checker</span>
             <div id="checker-status-box" class="bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2">
-              <span id="checker-status-icon" class="material-symbols-outlined text-base">local_shipping</span>
-              <span id="checker-status-preview">UNLOADING</span>
+              <span id="checker-status-icon" class="material-symbols-outlined text-base">campaign</span>
+              <span id="checker-status-preview">PANGGIL DRIVER</span>
             </div>
           </label>
         </div>
         ${datalists()}
         <button id="checker-submit-btn" class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110" type="submit">
-          <span class="material-symbols-outlined">save</span><span id="checker-submit-text">Simpan Gate</span>
+          <span class="material-symbols-outlined">save</span><span id="checker-submit-text">Panggil ke Gate</span>
         </button>
       </form>
     </div>
@@ -411,30 +408,455 @@ function pageAntrian() {
   </div>${queueTable()}`;
 }
 
+let callMonitorRefreshTimer = null;
+let lastSpokenCallKey = "";
+let tvModeActive = false;
+
+function parseStatus(row = {}) {
+  return String(row.status || "")
+    .trim()
+    .toUpperCase();
+}
+
+function callTimestampValue(row = {}) {
+  return queueCreatedValue({
+    created_at:
+      row.called_at ||
+      row.updated_at ||
+      row.register_time ||
+      row.created_at ||
+      row.Timestamp ||
+      "",
+  });
+}
+
+function getLatestCallTicket(queue = state.dashboard?.queue || []) {
+  const called = [...(queue || [])]
+    .filter((row) => {
+      const st = parseStatus(row);
+      const hasGate =
+        String(row.gate || "").trim() && String(row.gate || "").trim() !== "-";
+      return (
+        hasGate &&
+        (st.includes("CALLED") ||
+          st.includes("UNLOADING") ||
+          st.includes("COMPLETED"))
+      );
+    })
+    .sort((a, b) => callTimestampValue(b) - callTimestampValue(a));
+
+  return called[0] || state.lastCalled || (queue || [])[0] || {};
+}
+
+function getNextWaitingTickets(
+  queue = state.dashboard?.queue || [],
+  current = {},
+) {
+  const currentKey = ticketIdentity ? ticketIdentity(current) : "";
+  return (queue || [])
+    .filter((row) => {
+      const st = parseStatus(row);
+      const key = ticketIdentity ? ticketIdentity(row) : "";
+      return key !== currentKey && !st.includes("COMPLETED");
+    })
+    .slice(0, 6);
+}
+
+function callKey(row = {}) {
+  return [
+    row.ticket_id || "",
+    row.queue_no || "",
+    row.original_queue_no || "",
+    row.gate || "",
+    row.status || "",
+    row.called_at || row.updated_at || "",
+  ]
+    .join("|")
+    .toUpperCase();
+}
+
+function isVoiceMonitorEnabled() {
+  return localStorage.getItem("inboundVoiceMonitor") === "1";
+}
+
+function numberToIndoWords(n) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return String(n || "");
+  const words = [
+    "",
+    "satu",
+    "dua",
+    "tiga",
+    "empat",
+    "lima",
+    "enam",
+    "tujuh",
+    "delapan",
+    "sembilan",
+    "sepuluh",
+    "sebelas",
+  ];
+
+  if (value < 12) return words[value] || "";
+  if (value < 20) return words[value - 10] + " belas";
+  if (value < 100) {
+    const puluh = Math.floor(value / 10);
+    const sisa = value % 10;
+    return words[puluh] + " puluh" + (sisa ? " " + words[sisa] : "");
+  }
+  if (value < 200)
+    return (
+      "seratus" + (value > 100 ? " " + numberToIndoWords(value - 100) : "")
+    );
+  if (value < 1000) {
+    const ratus = Math.floor(value / 100);
+    const sisa = value % 100;
+    return (
+      words[ratus] + " ratus" + (sisa ? " " + numberToIndoWords(sisa) : "")
+    );
+  }
+  return String(value);
+}
+
+function pronounceQueueNo(queueNo = "") {
+  const text = String(queueNo || "")
+    .trim()
+    .toUpperCase();
+  const match = text.match(/^(REG|VIP|DROP)\s*([0-9]+)\s*-\s*([0-9]+)$/);
+  if (!match) return text;
+  const typeMap = {
+    REG: "reguler",
+    VIP: "VIP",
+    DROP: "drop barang",
+  };
+  return `${typeMap[match[1]] || match[1]} slot ${numberToIndoWords(match[2])} nomor ${numberToIndoWords(match[3])}`;
+}
+
+function pronounceGate(gate = "") {
+  const text = String(gate || "").trim();
+  const match = text.match(/(Dock|Chiller)\s*0*([0-9]+)/i);
+  if (!match) return text || "dock";
+  return `${match[1]} ${numberToIndoWords(match[2])}`;
+}
+
+function cleanSpeechName(value = "") {
+  return String(value || "")
+    .replace(/[^\w\s./&-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCallSpeech(row = {}) {
+  const queue = pronounceQueueNo(row.queue_no || "");
+  const driver = cleanSpeechName(row.driver_name || "");
+  const gate = pronounceGate(row.gate || "");
+  const vendor = cleanSpeechName(row.vendor_name || "");
+
+  const driverPart = driver ? `, driver ${driver}` : "";
+  const vendorPart = !driver && vendor ? `, vendor ${vendor}` : "";
+
+  return `Perhatian. Nomor antrian ${queue}${driverPart}${vendorPart}, silakan menuju ${gate}. Terima kasih.`;
+}
+
+function getBestIndonesianVoice() {
+  const voices = window.speechSynthesis?.getVoices?.() || [];
+  return (
+    voices.find((v) =>
+      /id-ID|Indonesia|Indonesian/i.test(`${v.lang} ${v.name}`),
+    ) ||
+    voices.find((v) => /Google|Microsoft/i.test(v.name)) ||
+    voices[0] ||
+    null
+  );
+}
+
+function playCallChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
+
+    [880, 1174].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.12);
+      osc.connect(gain);
+      osc.start(ctx.currentTime + idx * 0.12);
+      osc.stop(ctx.currentTime + 0.5 + idx * 0.12);
+    });
+
+    setTimeout(() => ctx.close?.(), 900);
+  } catch (err) {
+    console.warn("Chime unavailable", err);
+  }
+}
+
+function speakTextId(text, force = false) {
+  if (!("speechSynthesis" in window)) {
+    showToast("Browser belum support suara otomatis.");
+    return;
+  }
+  if (!force && !isVoiceMonitorEnabled()) return;
+
+  try {
+    window.speechSynthesis.cancel();
+    playCallChime();
+
+    setTimeout(() => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "id-ID";
+      utter.rate = 0.86;
+      utter.pitch = 1.02;
+      utter.volume = 1;
+      const voice = getBestIndonesianVoice();
+      if (voice) utter.voice = voice;
+      window.speechSynthesis.speak(utter);
+    }, 420);
+  } catch (err) {
+    console.warn("Speech error", err);
+  }
+}
+
+function speakCall(row = {}, force = false) {
+  if (!row || !row.queue_no) return;
+  speakTextId(buildCallSpeech(row), force);
+}
+
+function maybeSpeakLatestCall(force = false) {
+  const latest = getLatestCallTicket();
+  if (!latest || !latest.queue_no) return;
+  const st = parseStatus(latest);
+
+  // Auto voice hanya untuk status CALLED. UNLOADING/COMPLETED tidak auto announce.
+  if (!force && !st.includes("CALLED")) return;
+
+  const key = callKey(latest);
+  if (!force && key && key === lastSpokenCallKey) return;
+
+  lastSpokenCallKey = key;
+  speakCall(latest, force);
+}
+
+function activateVoiceMonitor() {
+  localStorage.setItem("inboundVoiceMonitor", "1");
+  showToast("Suara monitor aktif");
+  speakTextId(
+    "Suara monitor aktif. Sistem panggilan inbound siap digunakan.",
+    true,
+  );
+  setTimeout(() => maybeSpeakLatestCall(true), 1400);
+  renderPage("panggil", false);
+}
+
+function deactivateVoiceMonitor() {
+  localStorage.removeItem("inboundVoiceMonitor");
+  window.speechSynthesis?.cancel?.();
+  showToast("Suara monitor dimatikan");
+  renderPage("panggil", false);
+}
+
+function recallVoice() {
+  const latest = getLatestCallTicket();
+  if (!latest || !latest.queue_no) {
+    showToast("Belum ada nomor dipanggil.");
+    return;
+  }
+  speakCall(latest, true);
+  showToast("Panggil ulang suara " + latest.queue_no);
+}
+
+function applyTvModeStyles(active) {
+  tvModeActive = active;
+  const sidebar =
+    document.getElementById("sidebar-panel") || document.querySelector("aside");
+  const header = document.querySelector("header");
+  const mobile = document.getElementById("mobile-menu-bar");
+  const root = document.getElementById("page-root");
+  const body = document.body;
+
+  [sidebar, header, mobile].forEach((el) => {
+    if (el) el.style.display = active ? "none" : "";
+  });
+
+  if (root) {
+    root.style.padding = active ? "0" : "";
+    root.style.overflowY = active ? "hidden" : "";
+  }
+  if (body) body.classList.toggle("tv-mode-active", active);
+}
+
+async function enterTvFullScreen() {
+  applyTvModeStyles(true);
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (err) {
+    console.warn("Fullscreen rejected", err);
+  }
+  showToast("Mode TV aktif");
+  renderPage("panggil", false);
+}
+
+function exitTvFullScreen() {
+  applyTvModeStyles(false);
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  showToast("Mode TV dimatikan");
+  renderPage("panggil", false);
+}
+
+function initTvModeListeners() {
+  if (window.__inboundTvListenersReady) return;
+  window.__inboundTvListenersReady = true;
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && tvModeActive) {
+      applyTvModeStyles(false);
+      if (state.page === "panggil") renderPage("panggil", false);
+    }
+  });
+  window.speechSynthesis?.onvoiceschanged;
+}
+
+function startCallMonitorRuntime() {
+  if (callMonitorRefreshTimer) clearInterval(callMonitorRefreshTimer);
+
+  if (state.page !== "panggil") return;
+
+  maybeSpeakLatestCall(false);
+
+  callMonitorRefreshTimer = setInterval(() => {
+    if (state.page !== "panggil") {
+      clearInterval(callMonitorRefreshTimer);
+      callMonitorRefreshTimer = null;
+      return;
+    }
+
+    if (typeof refreshCallMonitorData === "function") {
+      refreshCallMonitorData(false).then(() => {
+        const latest = getLatestCallTicket();
+        state.lastCalled = latest || state.lastCalled;
+        updatePanggilDom();
+        maybeSpeakLatestCall(false);
+      });
+    }
+  }, 5000);
+}
+
+function stopCallMonitorRuntime() {
+  if (callMonitorRefreshTimer) {
+    clearInterval(callMonitorRefreshTimer);
+    callMonitorRefreshTimer = null;
+  }
+}
+
+function callStatusBadge(row = {}) {
+  const st = parseStatus(row);
+  if (st.includes("COMPLETED"))
+    return `<span class="px-4 py-2 rounded-full bg-success/15 text-success border border-success/30 font-bold">SELESAI UNLOADING</span>`;
+  if (st.includes("UNLOADING"))
+    return `<span class="px-4 py-2 rounded-full bg-warning/15 text-warning border border-warning/30 font-bold">UNLOADING</span>`;
+  if (st.includes("CALLED"))
+    return `<span class="px-4 py-2 rounded-full bg-primary/15 text-primary border border-primary/30 font-bold animate-pulse">DIPANGGIL</span>`;
+  return `<span class="px-4 py-2 rounded-full bg-tertiary/15 text-tertiary border border-tertiary/30 font-bold">WAITING</span>`;
+}
+
+function updatePanggilDom() {
+  if (state.page !== "panggil") return;
+  const latest = getLatestCallTicket();
+  const queue = document.getElementById("display-queue");
+  const dock = document.getElementById("display-dock");
+  const driver = document.getElementById("display-driver");
+  const plate = document.getElementById("display-plate");
+  const vendor = document.getElementById("display-vendor");
+  const badge = document.getElementById("display-status-badge");
+
+  if (queue) queue.textContent = latest.queue_no || "-";
+  if (dock) dock.textContent = latest.gate || "-";
+  if (driver) driver.textContent = latest.driver_name || "-";
+  if (plate) plate.textContent = latest.plat_number || "-";
+  if (vendor) vendor.textContent = latest.vendor_name || "-";
+  if (badge) badge.innerHTML = callStatusBadge(latest);
+}
+
 function pagePanggil() {
-  const last = state.lastCalled || (state.dashboard?.queue || [])[0] || {};
-  return `<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
-    <div class="lg:col-span-8 glass-card rounded-xl p-8 min-h-[520px] flex flex-col items-center justify-center text-center">
-      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-[0.35em]">Nomor Dipanggil</span>
-      <div id="display-queue" class="font-queue-id text-[96px] md:text-[150px] leading-none text-primary my-8">${esc(last.queue_no || "IB-000")}</div>
-      <div class="bg-primary-container text-on-primary-container rounded-xl px-10 py-5 text-3xl md:text-5xl font-extrabold"><span id="display-dock">${esc(last.gate || "Dock 01")}</span></div>
-      <p class="text-on-surface-variant mt-8 text-lg">${esc(last.vendor_name || "Silakan menuju dock yang tertera.")}</p>
-    </div>
-    <div class="lg:col-span-4 flex flex-col gap-gutter">
-      <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Kontrol Panggilan</h3>
-        <select id="call-gate" class="form-select mb-3">${(state.options.gate || []).map((g) => `<option>${esc(g)}</option>`).join("")}</select>
-        <button onclick="callNext(this)" class="w-full bg-primary-container text-on-primary-container py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110"><span class="material-symbols-outlined">campaign</span>Panggil Berikutnya</button>
-        <button onclick="recall()" class="w-full mt-3 border border-outline-variant py-4 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-surface-container"><span class="material-symbols-outlined">replay</span>Panggil Ulang</button>
+  const queue = state.dashboard?.queue || [];
+  const last = getLatestCallTicket(queue);
+  const upcoming = getNextWaitingTickets(queue, last);
+  const voiceOn = isVoiceMonitorEnabled();
+  const tvClass = tvModeActive
+    ? "min-h-screen rounded-none"
+    : "min-h-[calc(100vh-112px)] rounded-xl";
+
+  return `<div id="tv-call-screen" class="${tvClass} bg-surface-container-lowest/80 border border-outline-variant/40 shadow-2xl overflow-hidden relative">
+    <div class="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.22),transparent_55%)]"></div>
+
+    <div class="relative z-10 h-full min-h-[calc(100vh-112px)] flex flex-col">
+      <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 px-8 py-5 border-b border-outline-variant/30 bg-surface/35">
+        <div>
+          <div class="text-[12px] uppercase tracking-[0.5em] text-on-surface-variant font-extrabold">Inbound CBT TV Monitor</div>
+          <div class="text-3xl md:text-4xl font-extrabold text-primary mt-1">Panggilan Dock</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${voiceOn ? `<button onclick="deactivateVoiceMonitor()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">volume_up</span>Suara Aktif</button>` : `<button onclick="activateVoiceMonitor()" class="bg-primary-container text-on-primary-container rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">volume_up</span>Aktifkan Suara TV</button>`}
+          <button onclick="recallVoice()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">replay</span>Panggil Ulang Suara</button>
+          ${tvModeActive ? `<button onclick="exitTvFullScreen()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">fullscreen_exit</span>Exit TV</button>` : `<button onclick="enterTvFullScreen()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">fullscreen</span>Mode TV Full Screen</button>`}
+        </div>
       </div>
-      <div class="glass-card rounded-xl p-6 flex-1"><h3 class="font-headline-md text-headline-md mb-4">Queue Terbaru</h3>${(
-        state.dashboard?.queue || []
-      )
-        .slice(0, 6)
-        .map(
-          (x) =>
-            `<div class="py-3 border-b border-outline-variant/30"><span class="font-queue-id">${esc(x.queue_no)}</span><span class="float-right text-on-surface-variant">${esc(x.gate || x.status || "-")}</span></div>`,
-        )
-        .join("")}</div>
+
+      <div class="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-0">
+        <div class="xl:col-span-8 flex flex-col items-center justify-center text-center px-6 py-8">
+          <div id="display-status-badge" class="mb-5">${callStatusBadge(last)}</div>
+          <div class="text-[13px] uppercase tracking-[0.75em] text-on-surface-variant font-extrabold mb-4">Nomor Dipanggil</div>
+          <div id="display-queue" class="font-queue-id text-[88px] sm:text-[130px] xl:text-[180px] 2xl:text-[220px] leading-none text-primary font-black tracking-tight calling-effect">${esc(last.queue_no || "-")}</div>
+
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-5xl">
+            <div class="bg-primary-container text-on-primary-container rounded-2xl px-8 py-7 shadow-xl">
+              <div class="text-[12px] uppercase tracking-[0.35em] font-extrabold opacity-80">Menuju</div>
+              <div id="display-dock" class="font-extrabold text-5xl md:text-6xl mt-2">${esc(last.gate || "-")}</div>
+            </div>
+            <div class="bg-surface-container/70 border border-outline-variant rounded-2xl px-8 py-7">
+              <div class="text-[12px] uppercase tracking-[0.35em] font-extrabold text-on-surface-variant">Driver</div>
+              <div id="display-driver" class="font-extrabold text-3xl md:text-4xl mt-2 text-on-surface">${esc(last.driver_name || "-")}</div>
+            </div>
+            <div class="bg-surface-container/70 border border-outline-variant rounded-2xl px-8 py-7">
+              <div class="text-[12px] uppercase tracking-[0.35em] font-extrabold text-on-surface-variant">Plat</div>
+              <div id="display-plate" class="font-queue-id text-3xl md:text-4xl mt-2 text-on-surface">${esc(last.plat_number || "-")}</div>
+            </div>
+          </div>
+
+          <div id="display-vendor" class="mt-8 text-2xl md:text-3xl text-on-surface-variant font-semibold max-w-5xl">${esc(last.vendor_name || "-")}</div>
+          <div class="mt-4 text-sm text-on-surface-variant">Auto refresh tiap 5 detik dari Output form. Voice otomatis hanya untuk status <b>CALLED / DIPANGGIL</b>.</div>
+        </div>
+
+        <div class="xl:col-span-4 border-t xl:border-t-0 xl:border-l border-outline-variant/30 bg-surface/25 p-6 flex flex-col">
+          <h3 class="font-headline-md text-headline-md mb-4">Queue Berikutnya</h3>
+          <div class="space-y-3 overflow-y-auto pr-1">
+            ${
+              upcoming.length
+                ? upcoming
+                    .map(
+                      (
+                        x,
+                      ) => `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/55 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="font-queue-id text-primary text-xl">${esc(x.queue_no || "-")}</div>
+                          <div class="text-sm font-bold text-on-surface-variant">${esc(x.gate || x.status || "-")}</div>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold">${esc(x.driver_name || "-")} · ${esc(x.plat_number || "-")}</div>
+                        <div class="text-xs text-on-surface-variant mt-1 truncate">${esc(x.vendor_name || "-")}</div>
+                      </div>`,
+                    )
+                    .join("")
+                : `<div class="text-on-surface-variant border border-dashed border-outline-variant rounded-xl p-6 text-center">Belum ada queue berikutnya.</div>`
+            }
+          </div>
+        </div>
+      </div>
     </div>
   </div>`;
 }
@@ -945,17 +1367,17 @@ function priorityItem(r) {
 
 function checkerListRow(r, i) {
   const st = String(r.status || "").toUpperCase();
-  const isDone = st.includes("COMPLETED");
-  const wait = r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
-  const actionLabel = st.includes("UNLOADING") ? "Selesai" : "Pilih";
-  const statusLabel = isDone ? "SELESAI UNLOADING" : st || "-";
-  return `<tr
-    data-status="${esc(st || "-")}"
-    data-vendor="${esc(String(r.vendor_name || "").toLowerCase())}"
-    data-queue="${esc(String(r.queue_no || "").toLowerCase())}"
-    data-po="${esc(String(r.po_number || "").toLowerCase())}"
-    class="hover:bg-primary/5 transition-colors"
-  >
+  const wait = st.includes("COMPLETED")
+    ? "Selesai"
+    : r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
+  const actionLabel = st.includes("COMPLETED")
+    ? "Selesai"
+    : st.includes("UNLOADING")
+      ? "Selesai"
+      : st.includes("CALLED")
+        ? "Unloading"
+        : "Panggil";
+  return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors">
     <td class="px-4 py-3"><button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button></td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
     <td class="px-4 py-3">${esc(r.vendor_name || "-")}</td>
@@ -963,8 +1385,8 @@ function checkerListRow(r, i) {
     <td class="px-4 py-3 font-queue-id text-sm">${esc(r.plat_number || "-")}</td>
     <td class="px-4 py-3">${esc(r.driver_name || "-")}</td>
     <td class="px-4 py-3">${esc(r.gate || "-")}</td>
-    <td class="px-4 py-3">${esc(statusLabel)}</td>
-    <td class="px-4 py-3 font-queue-id ${isDone ? "text-success" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}">${esc(wait)}</td>
+    <td class="px-4 py-3">${esc(st || "-")}</td>
+    <td class="px-4 py-3 font-queue-id ${st.includes("COMPLETED") ? "text-success" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
   </tr>`;
 }
 
@@ -974,10 +1396,15 @@ function populateCheckerFromTicket(index) {
   if (!row || !form) return;
 
   const currentStatus = String(row.status || "").toUpperCase();
-  const nextStatus = currentStatus.includes("UNLOADING")
-    ? "COMPLETED"
-    : "UNLOADING";
-  const lockGate = nextStatus === "COMPLETED";
+  let nextStatus = "CALLED";
+  if (currentStatus.includes("CALLED")) nextStatus = "UNLOADING";
+  if (currentStatus.includes("UNLOADING")) nextStatus = "COMPLETED";
+  if (currentStatus.includes("COMPLETED")) nextStatus = "COMPLETED";
+
+  const lockGate =
+    currentStatus.includes("CALLED") ||
+    currentStatus.includes("UNLOADING") ||
+    currentStatus.includes("COMPLETED");
 
   if (form.ticket_id) form.ticket_id.value = row.ticket_id || "";
   if (form.queue_no)
@@ -1002,18 +1429,18 @@ function populateCheckerFromTicket(index) {
   updateCheckerStatusPreview(nextStatus);
 
   showToast(
-    nextStatus === "COMPLETED"
-      ? "Data " +
-          (row.queue_no || row.plat_number || "") +
-          " siap diselesaikan. Gate terkunci."
-      : "Data " +
-          (row.queue_no || row.plat_number || "") +
-          " masuk form Checker.",
+    nextStatus === "CALLED"
+      ? "Isi Gate lalu panggil ke monitor TV."
+      : nextStatus === "UNLOADING"
+        ? "Data siap diubah ke UNLOADING. Gate terkunci."
+        : "Data siap diselesaikan. Gate terkunci.",
   );
 }
 
-function updateCheckerStatusPreview(status = "UNLOADING") {
-  const safe = String(status || "UNLOADING").toUpperCase();
+function updateCheckerStatusPreview(status = "CALLED") {
+  const safe = String(status || "CALLED").toUpperCase();
+  const isCalled = safe.includes("CALLED");
+  const isUnloading = safe.includes("UNLOADING");
   const isDone = safe.includes("COMPLETED");
   const box = document.getElementById("checker-status-box");
   const icon = document.getElementById("checker-status-icon");
@@ -1023,16 +1450,32 @@ function updateCheckerStatusPreview(status = "UNLOADING") {
   if (box) {
     box.className = isDone
       ? "bg-success/15 border border-success/30 rounded-lg px-4 py-3 text-success font-bold flex items-center gap-2"
-      : "bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2";
+      : isUnloading
+        ? "bg-warning/15 border border-warning/30 rounded-lg px-4 py-3 text-warning font-bold flex items-center gap-2"
+        : "bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2";
   }
-  if (icon) icon.textContent = isDone ? "check_circle" : "local_shipping";
-  if (label) label.textContent = isDone ? "SELESAI UNLOADING" : "UNLOADING";
+  if (icon)
+    icon.textContent = isDone
+      ? "check_circle"
+      : isUnloading
+        ? "local_shipping"
+        : "campaign";
+  if (label)
+    label.textContent = isDone
+      ? "SELESAI UNLOADING"
+      : isUnloading
+        ? "UNLOADING"
+        : "PANGGIL DRIVER";
   if (btnText)
-    btnText.textContent = isDone ? "Selesai Unloading" : "Simpan Gate";
+    btnText.textContent = isDone
+      ? "Selesai Unloading"
+      : isUnloading
+        ? "Mulai Unloading"
+        : "Panggil ke Gate";
 
   const form = document.getElementById("checker-form");
   if (form?.gate) {
-    const locked = isDone;
+    const locked = isDone || isUnloading;
     form.gate.disabled = locked;
     form.gate.classList.toggle("opacity-60", locked);
     form.gate.classList.toggle("cursor-not-allowed", locked);
@@ -1144,6 +1587,13 @@ let liveWaitingTimer = null;
 
 function refreshLiveWaitingCells() {
   document.querySelectorAll('[data-live-waiting="1"]').forEach((el) => {
+    const st = String(el.dataset.status || "").toUpperCase();
+    if (st.includes("COMPLETED") || el.dataset.completed) {
+      el.textContent = "Selesai";
+      el.classList.remove("text-tertiary", "text-warning", "text-error");
+      el.classList.add("text-success");
+      return;
+    }
     el.textContent = liveWaitingText(el.dataset.created, el.dataset.completed);
   });
 }
@@ -1203,6 +1653,16 @@ function renderPage(page, toast = true) {
     }, 0);
   updateActiveNav(safe);
   startLiveWaitingTimer();
+
+  if (safe === "panggil") {
+    setTimeout(() => {
+      startCallMonitorRuntime();
+      updatePanggilDom();
+    }, 0);
+  } else {
+    stopCallMonitorRuntime();
+  }
+
   requestAnimationFrame(() => updateActiveNav(safe));
   history.replaceState(null, "", "#" + safe);
   if (toast) showToast("Buka menu " + pageMeta[safe].title);
