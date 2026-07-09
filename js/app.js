@@ -69,8 +69,7 @@ const pageMeta = {
   },
   monitor: {
     title: "Waiting List Monitoring",
-    subtitle:
-      "Monitor plat nomor, gate, status, dan waktu tunggu berjalan",
+    subtitle: "Monitor plat nomor, gate, status, dan waktu tunggu berjalan",
   },
   laporan: {
     title: "Waiting List",
@@ -133,7 +132,7 @@ function pageDaftar() {
       <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
         <div>
           <h3 class="font-headline-md text-headline-md mb-1">Security Input</h3>
-          <p class="text-on-surface-variant">Isi PO dulu. Vendor, qty, SKU, dan slot auto lookup dari CAPHAND tanpa klik tombol.</p>
+          <p class="text-on-surface-variant">Isi PO dulu. Vendor, qty, SKU, dan slot auto lookup dari Data V2 tanpa klik tombol.</p>
         </div>
         <div class="thin-tab rounded-lg px-4 py-2 font-label-sm flex items-center gap-2 w-fit opacity-80">
           <span class="material-symbols-outlined">sync</span>Auto lookup PO
@@ -247,8 +246,7 @@ function pageAntrian() {
 }
 
 function pagePanggil() {
-  const last =
-    state.lastCalled || (state.dashboard?.queue || [])[0] || {};
+  const last = state.lastCalled || (state.dashboard?.queue || [])[0] || {};
   return `<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
     <div class="lg:col-span-8 glass-card rounded-xl p-8 min-h-[520px] flex flex-col items-center justify-center text-center">
       <span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-[0.35em]">Nomor Dipanggil</span>
@@ -309,7 +307,7 @@ function pageMonitor() {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         ${miniMetric("Total Aktif", rows.length, "text-primary")}
         ${miniMetric("Masih Waiting", waiting.length, "text-tertiary")}
-        ${miniMetric("PO CAPHAND", cap.unique_po || 0, "text-secondary")}
+        ${miniMetric("PO Data V2", cap.unique_po || 0, "text-secondary")}
       </div>
       <div class="overflow-x-auto">
         <table id="monitor-table" class="w-full text-left">
@@ -323,9 +321,9 @@ function pageMonitor() {
       </div>
     </div>
     <div class="glass-card rounded-xl p-6">
-      <h3 class="font-headline-md text-headline-md mb-4">CAPHAND Summary</h3>
+      <h3 class="font-headline-md text-headline-md mb-4">Data V2 Summary</h3>
       <div class="space-y-3">
-        ${miniMetric("Rows CAPHAND", cap.rows || 0, "text-primary")}
+        ${miniMetric("Rows Data V2", cap.rows || 0, "text-primary")}
         ${miniMetric("Unique SKU", cap.unique_sku || 0, "text-secondary")}
         ${miniMetric("Total Request Qty", num(cap.total_request_qty || 0), "text-success")}
         ${miniMetric("Late Rows", cap.late_rows || 0, "text-error")}
@@ -336,8 +334,7 @@ function pageMonitor() {
 
 function monitorRow(r) {
   const st = String(r.status || "").toUpperCase();
-  const wait =
-    r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
+  const wait = r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
   const danger =
     Number(r.waiting_minutes || minutesFromCreated(r.created_at)) >= 60;
   return `<tr class="hover:bg-primary/5 ${danger ? "bg-error/5" : ""}">
@@ -371,12 +368,12 @@ function pageLaporan() {
 function pageSetting() {
   return `<div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
     <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">API Setup</h3>
-      <p class="text-on-surface-variant mb-4">Edit file HTML, ganti konstanta <b>API_URL</b> dengan URL Web App GAS.</p>
-      <pre class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-x-auto">const API_URL = "${esc(API_URL)}";</pre>
+      <p class="text-on-surface-variant mb-4">Edit file HTML, ganti konstanta <b>API_URL_V2</b> dengan URL Web App GAS.</p>
+      <pre class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-x-auto">const API_URL_V2 = "${esc(typeof API_URL_V2 !== "undefined" ? API_URL_V2 : "")}";</pre>
       <button onclick="initApi()" class="mt-4 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold">Test API</button>
     </div>
     <div class="glass-card rounded-xl p-6"><h3 class="font-headline-md text-headline-md mb-4">Endpoint Cepat</h3>
-      ${["health", "schema", "dashboard", "debug", "report", "options"].map((a) => `<button onclick="openApi('${a}')" class="thin-tab rounded-lg px-4 py-2 mr-2 mb-2">${a}</button>`).join("")}
+      ${["raw", "reload", "debug"].map((a) => `<button onclick="openApi('${a}')" class="thin-tab rounded-lg px-4 py-2 mr-2 mb-2">${a}</button>`).join("")}
       <p class="text-on-surface-variant text-sm mt-3">Kalau API URL sudah benar, tombol ini buka endpoint di tab baru.</p>
     </div>
   </div>`;
@@ -389,14 +386,7 @@ function pageDebug() {
   </div>`;
 }
 
-function textInput(
-  name,
-  label,
-  placeholder,
-  list,
-  value = "",
-  extra = "",
-) {
+function textInput(name, label, placeholder, list, value = "", extra = "") {
   return `<label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">${label}</span><input name="${name}" ${list ? `list="${list}"` : ""} ${extra || ""} class="form-input" placeholder="${placeholder || ""}" value="${esc(value || "")}" /></label>`;
 }
 
@@ -449,8 +439,7 @@ function priorityItem(r) {
 
 function checkerListRow(r, i) {
   const st = String(r.status || "").toUpperCase();
-  const wait =
-    r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
+  const wait = r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
   return `<tr data-status="${esc(st || "-")}" class="hover:bg-primary/5 transition-colors">
     <td class="px-4 py-3"><button type="button" onclick="populateCheckerFromTicket(${i})" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">Pilih</button></td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
@@ -478,9 +467,7 @@ function populateCheckerFromTicket(index) {
     form.status.value =
       row.status && row.status !== "WAITING" ? row.status : "ON_DOCK";
   showToast(
-    "Data " +
-      (row.queue_no || row.plat_number || "") +
-      " masuk form Checker",
+    "Data " + (row.queue_no || row.plat_number || "") + " masuk form Checker",
   );
 }
 
@@ -576,8 +563,7 @@ function renderPage(page, toast = true) {
   };
   const safe = map[page] ? page : "daftar";
   state.page = safe;
-  document.getElementById("page-title").textContent =
-    pageMeta[safe].title;
+  document.getElementById("page-title").textContent = pageMeta[safe].title;
   document.getElementById("page-subtitle").textContent =
     pageMeta[safe].subtitle;
   root.innerHTML = map[safe]();
@@ -593,11 +579,8 @@ function updateActiveNav(page) {
     const on = btn.dataset.page === page;
     btn.className = on ? navActive : navBase;
     const icon = btn.querySelector(".material-symbols-outlined");
-    const label = btn.querySelector(
-      "span:not(.material-symbols-outlined)",
-    );
-    if (icon)
-      icon.style.fontVariationSettings = on ? "'FILL' 1" : "'FILL' 0";
+    const label = btn.querySelector("span:not(.material-symbols-outlined)");
+    if (icon) icon.style.fontVariationSettings = on ? "'FILL' 1" : "'FILL' 0";
     if (label)
       label.className = on
         ? "font-label-sm text-label-sm font-bold"
@@ -635,9 +618,7 @@ function exportCsv() {
 function filterTable(tableId, q) {
   q = String(q || "").toLowerCase();
   document.querySelectorAll(`#${tableId} tbody tr`).forEach((tr) => {
-    tr.style.display = tr.textContent.toLowerCase().includes(q)
-      ? ""
-      : "none";
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
   });
 }
 
@@ -715,13 +696,11 @@ function validatePlateInput(input) {
 
 function validateRequiredFields(form) {
   let ok = true;
-  form
-    .querySelectorAll("input[required], select[required]")
-    .forEach((el) => {
-      const filled = String(el.value || "").trim() !== "";
-      el.classList.toggle("invalid", !filled);
-      if (!filled) ok = false;
-    });
+  form.querySelectorAll("input[required], select[required]").forEach((el) => {
+    const filled = String(el.value || "").trim() !== "";
+    el.classList.toggle("invalid", !filled);
+    if (!filled) ok = false;
+  });
   return ok;
 }
 
@@ -751,8 +730,7 @@ function applyTheme(mode, withToast = true) {
   const safe = mode === "light" ? "light" : "dark";
   html.classList.toggle("light", safe === "light");
   html.classList.toggle("dark", safe === "dark");
-  if (icon)
-    icon.innerText = safe === "light" ? "light_mode" : "dark_mode";
+  if (icon) icon.innerText = safe === "light" ? "light_mode" : "dark_mode";
   localStorage.setItem("inboundQueueTheme", safe);
   if (withToast)
     showToast(safe === "light" ? "Light mode aktif" : "Dark mode aktif");
@@ -764,9 +742,7 @@ function initTheme() {
 
 function toggleTheme() {
   applyTheme(
-    document.documentElement.classList.contains("dark")
-      ? "light"
-      : "dark",
+    document.documentElement.classList.contains("dark") ? "light" : "dark",
   );
 }
 
@@ -850,7 +826,7 @@ function demoDashboard() {
         metric: "unique_sku",
       },
       {
-        label: "Late CAPHAND",
+        label: "Late Rows",
         display_value: "0",
         icon: "warning",
         color: "error",
@@ -949,4 +925,3 @@ function initShader() {
   }
   render(0);
 }
-
