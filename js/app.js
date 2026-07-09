@@ -579,6 +579,151 @@ function pageDaftar() {
   </div>`;
 }
 
+function normalizeFleetForGateRule(type = "") {
+  return String(type || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+function isWingboxFleet(type = "") {
+  const fleet = normalizeFleetForGateRule(type);
+  return fleet.includes("WINGBOX") || fleet.includes("WING BOX");
+}
+
+function parseGateList(value = "") {
+  return String(value || "")
+    .split(/[,;/\n]+/)
+    .map((x) => x.trim())
+    .filter((x) => x && x !== "-");
+}
+
+function uniqueGateList(values = []) {
+  return [
+    ...new Set(
+      (values || []).map((x) => String(x || "").trim()).filter(Boolean),
+    ),
+  ];
+}
+
+function gateSelectOptions(selected = "", allowBlank = false) {
+  const blank = allowBlank
+    ? `<option value="" ${!selected ? "selected" : ""}>- Optional -</option>`
+    : "";
+  return (
+    blank +
+    (state.options.gate || [])
+      .map(
+        (gate) =>
+          `<option value="${esc(gate)}" ${String(gate) === String(selected) ? "selected" : ""}>${esc(gate)}</option>`,
+      )
+      .join("")
+  );
+}
+
+function checkerGatePicker() {
+  return `<label class="flex flex-col gap-2">
+    <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Gate</span>
+    <input type="hidden" name="gate" id="checker-gate-value" value="Dock 01" />
+    <div id="checker-gate-picker" class="flex flex-col gap-2"></div>
+    <div id="checker-gate-help" class="text-[11px] text-on-surface-variant">Pilih data dari list. Wingbox wajib pilih minimal 2 gate, maksimal 3 gate.</div>
+  </label>`;
+}
+
+function renderCheckerGatePicker(
+  fleetType = "",
+  gateValue = "",
+  locked = false,
+) {
+  const wrap = document.getElementById("checker-gate-picker");
+  const hidden = document.getElementById("checker-gate-value");
+  const help = document.getElementById("checker-gate-help");
+  if (!wrap || !hidden) return;
+
+  const gates = parseGateList(gateValue);
+  const wingbox = isWingboxFleet(fleetType);
+  const disabled = locked ? "disabled" : "";
+  const lockedClass = locked ? "opacity-60 cursor-not-allowed" : "";
+
+  if (wingbox) {
+    const selected = [
+      gates[0] || "Dock 01",
+      gates[1] || "Dock 02",
+      gates[2] || "",
+    ];
+
+    wrap.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+      ${[0, 1, 2]
+        .map(
+          (idx) => `<div class="flex flex-col gap-1">
+            <span class="text-[10px] uppercase font-bold text-on-surface-variant">${idx === 2 ? "Gate 3 Optional" : `Gate ${idx + 1}`}</span>
+            <select data-wingbox-gate="${idx}" class="form-select ${lockedClass}" ${disabled} onchange="syncCheckerGateInput()">
+              ${gateSelectOptions(selected[idx], idx === 2)}
+            </select>
+          </div>`,
+        )
+        .join("")}
+    </div>`;
+
+    hidden.value = uniqueGateList(selected).join(", ");
+    if (help) {
+      help.innerHTML = locked
+        ? "Wingbox memakai 2 sampai 3 gate dan sudah terkunci."
+        : "<b>WINGBOX wajib pilih minimal 2 gate dan maksimal 3 gate berbeda.</b> Gate 3 optional.";
+    }
+  } else {
+    const selected = gates[0] || "Dock 01";
+    wrap.innerHTML = `<select data-single-gate="1" class="form-select ${lockedClass}" ${disabled} onchange="syncCheckerGateInput()">
+      ${gateSelectOptions(selected)}
+    </select>`;
+    hidden.value = selected;
+    if (help)
+      help.textContent = locked
+        ? "Gate sudah terkunci."
+        : "Pilih 1 gate untuk kendaraan ini.";
+  }
+}
+
+function syncCheckerGateInput() {
+  const form = document.getElementById("checker-form");
+  const hidden = document.getElementById("checker-gate-value");
+  if (!form || !hidden) return true;
+
+  const fleet = form.fleet_type?.value || "";
+  if (isWingboxFleet(fleet)) {
+    const allSelects = [...document.querySelectorAll("[data-wingbox-gate]")];
+    const rawValues = allSelects
+      .map((el) => String(el.value || "").trim())
+      .filter(Boolean);
+    const gates = uniqueGateList(rawValues);
+
+    hidden.value = gates.join(", ");
+
+    const duplicateExists = rawValues.length !== gates.length;
+    const ok = gates.length >= 2 && gates.length <= 3 && !duplicateExists;
+
+    allSelects.forEach((el) => {
+      const val = String(el.value || "").trim();
+      const isDuplicate = val && rawValues.filter((x) => x === val).length > 1;
+      const isRequiredEmpty = Number(el.dataset.wingboxGate) < 2 && !val;
+      el.classList.toggle("invalid", !ok || isDuplicate || isRequiredEmpty);
+    });
+
+    return ok;
+  }
+
+  const gate =
+    document.querySelector("[data-single-gate]")?.value ||
+    hidden.value ||
+    "Dock 01";
+  hidden.value = gate;
+  return !!gate;
+}
+
+function resetCheckerGatePicker() {
+  renderCheckerGatePicker("", "Dock 01", false);
+}
+
 function pageChecker() {
   const o = state.options;
   const rows = state.dashboard?.queue || [];
@@ -617,7 +762,7 @@ function pageChecker() {
     </div>
     <div class="xl:col-span-5 glass-card rounded-xl p-6">
       <h3 class="font-headline-md text-headline-md mb-1">Checker Input</h3>
-      <p class="text-on-surface-variant mb-6">Step: WAITING → CALLED tampil di TV → UNLOADING → SELESAI UNLOADING.</p>
+      <p class="text-on-surface-variant mb-6">Step: WAITING → CALLED tampil di TV → UNLOADING → SELESAI UNLOADING. Khusus WINGBOX wajib pilih minimal 2 gate dan maksimal 3 gate.</p>
       <form id="checker-form" onsubmit="submitChecker(event)">
         <input type="hidden" name="ticket_id" />
         <input type="hidden" name="queue_no" />
@@ -627,7 +772,7 @@ function pageChecker() {
           ${textInput("vendor_name", "Vendor Name", "Pilih dari list", "", "", "required readonly")}
           ${textInput("fleet_type", "Fleet Type", "Pilih dari list", "", "", "required readonly")}
           ${textInput("plat_number", "Plat Number", "Pilih dari list", "", "", 'required readonly onblur="validatePlateInput(this)"')}
-          ${selectInput("gate", "Gate", o.gate, "Dock 01", "required")}
+          ${checkerGatePicker()}
           <label class="flex flex-col gap-2 md:col-span-2">
             <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Status Checker</span>
             <div id="checker-status-box" class="bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2">
@@ -1316,6 +1461,83 @@ function updateLiveSlaCells() {
   });
 }
 
+function getGateVisibility(rows = []) {
+  const gates = (
+    state.options.gate ||
+    Array.from(
+      { length: 30 },
+      (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
+    )
+  ).map((gate) => ({
+    gate,
+    rows: [],
+  }));
+
+  const byGate = {};
+  gates.forEach((item) => {
+    byGate[item.gate] = item;
+  });
+
+  rows
+    .filter((row) => {
+      const st = String(row.status || "").toUpperCase();
+      return st.includes("UNLOADING") && !st.includes("COMPLETED");
+    })
+    .forEach((row) => {
+      parseGateList(row.gate || "").forEach((gate) => {
+        if (!byGate[gate]) byGate[gate] = { gate, rows: [] };
+        byGate[gate].rows.push(row);
+      });
+    });
+
+  return Object.values(byGate).sort((a, b) =>
+    String(a.gate).localeCompare(String(b.gate), "id", { numeric: true }),
+  );
+}
+
+function gateVisibilityPanel(rows = []) {
+  const gates = getGateVisibility(rows);
+  const active = gates.filter((g) => g.rows.length).length;
+
+  return `<div class="glass-card rounded-xl p-6 mb-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+      <div>
+        <h3 class="font-headline-md text-headline-md">Visibility Gate Bongkar</h3>
+        <p class="text-on-surface-variant">Pantau gate yang sedang UNLOADING. Wingbox bisa mengisi 2 sampai 3 gate sekaligus.</p>
+      </div>
+      <div class="rounded-full bg-warning/10 border border-warning/30 text-warning font-bold px-4 py-2">Gate aktif: ${active}</div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-10 gap-3">
+      ${gates
+        .map((g) => {
+          const busy = g.rows.length > 0;
+          const first = g.rows[0] || {};
+          return `<div class="rounded-xl border p-3 min-h-[112px] ${
+            busy
+              ? "bg-warning/10 border-warning/40"
+              : "bg-surface-container/40 border-outline-variant/40"
+          }">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-queue-id text-sm ${busy ? "text-warning" : "text-on-surface-variant"}">${esc(g.gate)}</div>
+              <span class="w-2.5 h-2.5 rounded-full ${busy ? "bg-warning status-pulse" : "bg-outline"}"></span>
+            </div>
+            ${
+              busy
+                ? `<div class="mt-3">
+                    <div class="font-queue-id text-primary text-sm">${esc(first.queue_no || "-")}</div>
+                    <div class="text-[11px] font-bold truncate mt-1">${esc(first.plat_number || "-")}</div>
+                    <div class="text-[10px] text-on-surface-variant truncate">${esc(first.driver_name || "-")}</div>
+                    ${g.rows.length > 1 ? `<div class="text-[10px] text-warning font-bold mt-1">+${g.rows.length - 1} lainnya</div>` : ""}
+                  </div>`
+                : `<div class="mt-5 text-[11px] text-on-surface-variant">Kosong</div>`
+            }
+          </div>`;
+        })
+        .join("")}
+    </div>
+  </div>`;
+}
+
 function pageMonitor() {
   const allRows = state.dashboard?.queue || [];
   const rows = allRows.filter(
@@ -1347,6 +1569,8 @@ function pageMonitor() {
       </div>
 
       <div class="mb-6">${slaRowsLegend()}</div>
+
+      ${gateVisibilityPanel(allRows)}
 
       <div class="overflow-x-auto border border-outline-variant/30 rounded-lg">
         <table id="monitor-table" class="w-full text-left">
@@ -1924,14 +2148,13 @@ function populateCheckerFromTicket(index) {
   if (form.fleet_type) form.fleet_type.value = row.fleet_type || "";
   if (form.plat_number)
     form.plat_number.value = normalizePlateValue(row.plat_number || "");
-  if (form.gate) {
-    const currentGate = row.gate && row.gate !== "-" ? row.gate : "Dock 01";
-    form.gate.value = currentGate;
-    form.gate.dataset.lockedGate = currentGate;
-    form.gate.disabled = lockGate;
-    form.gate.classList.toggle("opacity-60", lockGate);
-    form.gate.classList.toggle("cursor-not-allowed", lockGate);
-  }
+
+  renderCheckerGatePicker(
+    row.fleet_type || "",
+    row.gate || "Dock 01",
+    lockGate,
+  );
+
   if (form.status) form.status.value = nextStatus;
   if (form.unload_sla)
     form.unload_sla.value =
@@ -1941,7 +2164,9 @@ function populateCheckerFromTicket(index) {
 
   showToast(
     nextStatus === "CALLED"
-      ? "Isi Gate lalu panggil ke monitor TV."
+      ? isWingboxFleet(row.fleet_type)
+        ? "Wingbox wajib pilih minimal 2 gate lalu panggil ke monitor TV."
+        : "Isi Gate lalu panggil ke monitor TV."
       : nextStatus === "UNLOADING"
         ? "Data siap diubah ke UNLOADING. Gate terkunci."
         : "Data siap diselesaikan. Gate terkunci.",
@@ -1983,14 +2208,6 @@ function updateCheckerStatusPreview(status = "CALLED") {
       : isUnloading
         ? "Mulai Unloading"
         : "Panggil ke Gate";
-
-  const form = document.getElementById("checker-form");
-  if (form?.gate) {
-    const locked = isDone || isUnloading;
-    form.gate.disabled = locked;
-    form.gate.classList.toggle("opacity-60", locked);
-    form.gate.classList.toggle("cursor-not-allowed", locked);
-  }
 }
 
 function filterCheckerStatus(status) {
@@ -2199,6 +2416,13 @@ function renderPage(page, toast = true) {
     }, 0);
   updateActiveNav(safe);
   startLiveWaitingTimer();
+
+  if (safe === "checker") {
+    setTimeout(() => {
+      if (typeof resetCheckerGatePicker === "function")
+        resetCheckerGatePicker();
+    }, 0);
+  }
 
   if (safe === "panggil") {
     setTimeout(() => {

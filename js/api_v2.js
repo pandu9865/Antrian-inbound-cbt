@@ -1388,6 +1388,14 @@ async function submitChecker(e) {
   const form = e.target;
   const requiredOk = validateRequiredFields(form);
   const plateOk = validatePlateInput(form.plat_number);
+
+  if (typeof syncCheckerGateInput === "function" && !syncCheckerGateInput()) {
+    showToast(
+      "Wingbox wajib pilih minimal 2 gate dan maksimal 3 gate berbeda.",
+    );
+    return;
+  }
+
   if (!requiredOk || !plateOk) {
     showToast("Pilih data dari List Security dan isi Gate.");
     return;
@@ -1395,9 +1403,10 @@ async function submitChecker(e) {
 
   const body = Object.fromEntries(new FormData(form).entries());
 
-  // Kalau gate terkunci/disabled, FormData tidak mengambil select gate.
-  if (!body.gate && form.gate) {
-    body.gate = form.gate.dataset.lockedGate || form.gate.value || "Dock 01";
+  // Kalau gate terkunci/disabled, hidden gate tetap dipakai.
+  if (!body.gate) {
+    body.gate =
+      document.getElementById("checker-gate-value")?.value || "Dock 01";
   }
 
   body.plat_number = normalizePlateValue(body.plat_number);
