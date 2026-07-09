@@ -655,6 +655,38 @@ function driverWaitingLabel(row = {}) {
 }
 
 let driverTrackTimer = null;
+let driverTrackLiveRefreshTimer = null;
+let driverTrackLastRefreshAt = "";
+
+async function refreshDriverTrackLiveData(silent = true) {
+  if (!isDriverTrackMode()) return;
+
+  try {
+    if (
+      typeof fetchOutputFormData !== "function" ||
+      typeof buildDashboardFromV2 !== "function"
+    ) {
+      return;
+    }
+
+    const outputResponse = await fetchOutputFormData();
+    v2RawResponse = {
+      ...(v2RawResponse || {}),
+      status: "success",
+      timestamp: outputResponse?.timestamp || new Date().toISOString(),
+      outputForm: getOutputFormRows(outputResponse),
+    };
+
+    state.dashboard = buildDashboardFromV2(v2RawResponse);
+    driverTrackLastRefreshAt = formatDateTimeLocal(new Date());
+    refreshDriverTrackDom();
+
+    if (!silent) showToast("Status driver refresh");
+  } catch (err) {
+    console.error("Driver QR refresh failed", err);
+    if (!silent) showToast("Refresh status driver gagal: " + err.message);
+  }
+}
 
 function refreshDriverTrackDom() {
   if (!isDriverTrackMode()) return;
@@ -662,16 +694,50 @@ function refreshDriverTrackDom() {
   const wait = document.getElementById("driver-track-waiting");
   const status = document.getElementById("driver-track-status");
   const gate = document.getElementById("driver-track-gate");
+  const lastRefresh = document.getElementById("driver-track-last-refresh");
+  const liveBadge = document.getElementById("driver-track-live-badge");
 
   if (wait) wait.textContent = driverWaitingLabel(row);
   if (status) status.textContent = row.status || "WAITING";
   if (gate) gate.textContent = row.gate || "-";
+  if (lastRefresh) lastRefresh.textContent = driverTrackLastRefreshAt || "-";
+
+  if (liveBadge) {
+    const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
+    liveBadge.textContent = found ? "LIVE DATA" : "PREVIEW / BELUM SYNC";
+    liveBadge.className =
+      "mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold " +
+      (found
+        ? "bg-success/10 text-success border border-success/30"
+        : "bg-warning/10 text-warning border border-warning/30");
+  }
 }
 
 function startDriverTrackTimer() {
   if (driverTrackTimer) clearInterval(driverTrackTimer);
+  if (driverTrackLiveRefreshTimer) clearInterval(driverTrackLiveRefreshTimer);
+
   refreshDriverTrackDom();
+
+  // Refresh waktu menunggu di layar setiap detik.
   driverTrackTimer = setInterval(refreshDriverTrackDom, 1000);
+
+  // Khusus halaman hasil scan QR: ambil ulang Output form setiap 1 menit.
+  refreshDriverTrackLiveData(true);
+  driverTrackLiveRefreshTimer = setInterval(() => {
+    refreshDriverTrackLiveData(true);
+  }, 60000);
+}
+
+function stopDriverTrackTimer() {
+  if (driverTrackTimer) {
+    clearInterval(driverTrackTimer);
+    driverTrackTimer = null;
+  }
+  if (driverTrackLiveRefreshTimer) {
+    clearInterval(driverTrackLiveRefreshTimer);
+    driverTrackLiveRefreshTimer = null;
+  }
 }
 
 function pageDriverTrack() {
@@ -684,7 +750,7 @@ function pageDriverTrack() {
       <div class="text-center mb-6">
         <div class="text-[12px] uppercase tracking-[0.35em] text-on-surface-variant font-extrabold">Inbound CBT</div>
         <h1 class="text-2xl font-extrabold text-on-surface mt-2">Status Antrian Driver</h1>
-        <div class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
+        <div id="driver-track-live-badge" class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
           found
             ? "bg-success/10 text-success border border-success/30"
             : "bg-warning/10 text-warning border border-warning/30"
@@ -720,10 +786,12 @@ function pageDriverTrack() {
         <div><b class="text-xs uppercase text-on-surface-variant">Vendor</b><div class="font-bold">${esc(row.vendor_name || "-")}</div></div>
         <div><b class="text-xs uppercase text-on-surface-variant">PO</b><div class="font-bold break-all">${esc(row.po_number || "-")}</div></div>
         <div><b class="text-xs uppercase text-on-surface-variant">Register</b><div class="font-bold">${esc(row.register_time || row.created_at || "-")}</div></div>
+        <div><b class="text-xs uppercase text-on-surface-variant">Auto Refresh</b><div class="font-bold">Setiap 1 menit</div></div>
+        <div><b class="text-xs uppercase text-on-surface-variant">Last Refresh</b><div id="driver-track-last-refresh" class="font-bold">${esc(driverTrackLastRefreshAt || "-")}</div></div>
       </div>
 
-      <button onclick="location.reload()" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2">
-        <span class="material-symbols-outlined">refresh</span>Refresh Status
+      <button onclick="refreshDriverTrackLiveData(false)" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined">refresh</span>Refresh Status Sekarang
       </button>
     </div>
   </div>`;
@@ -3204,6 +3272,8 @@ function renderPage(page, toast = true) {
     history.replaceState(null, "", location.pathname + location.search);
     return;
   }
+
+  if (!isDriverTrackMode()) stopDriverTrackTimer?.();
 
   if (!isLoggedIn()) {
     state.page = "login";
