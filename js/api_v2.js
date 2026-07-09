@@ -469,31 +469,133 @@ async function refreshDashboard() {
   showToast("Data V2 refresh");
 }
 
+function parsePoNumbers(value) {
+  return [
+    ...new Set(
+      String(value || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function lookupMultiplePo(poText) {
+  const poNumbers = parsePoNumbers(poText);
+  const items = [];
+  const missing = [];
+
+  for (const po of poNumbers) {
+    const key = normalizeKey(po);
+    const found = v2PoIndex?.[key];
+    if (found) {
+      items.push({
+        ...found,
+        po_number: found.po_number || po,
+        po_input: po,
+      });
+    } else {
+      missing.push(po);
+    }
+  }
+
+  const vendors = [
+    ...new Set(
+      items.map((x) => String(x.vendor_name || "").trim()).filter(Boolean),
+    ),
+  ];
+
+  const slots = [
+    ...new Set(items.map((x) => String(x.slot || "").trim()).filter(Boolean)),
+  ];
+
+  const totalQty = items.reduce(
+    (sum, x) => sum + toNumberV2(x.total_po_qty),
+    0,
+  );
+  const totalSku = items.reduce(
+    (sum, x) => sum + toNumberV2(x.count_po_sku),
+    0,
+  );
+
+  return {
+    found: items.length > 0,
+    all_found: poNumbers.length > 0 && missing.length === 0,
+    po_numbers: poNumbers,
+    items,
+    missing_po: missing,
+    summary: {
+      po_number: poNumbers.join(", "),
+      po_numbers: poNumbers,
+      vendor_name: vendors.join(", "),
+      vendor_names: vendors,
+      slot: slots[0] || "3",
+      slots,
+      total_po_qty: totalQty,
+      count_po_sku: totalSku,
+      found_count: items.length,
+      missing_count: missing.length,
+    },
+  };
+}
+
+function updatePoLookupUi(lookup) {
+  const form = document.getElementById("security-form");
+  if (!form) return;
+
+  if (form.vendor_name)
+    form.vendor_name.value = lookup?.summary?.vendor_name || "";
+  if (form.slot && lookup?.summary?.slot)
+    form.slot.value = String(lookup.summary.slot || form.slot.value || "3");
+
+  const total = document.getElementById("security-total-qty");
+  const sku = document.getElementById("security-count-sku");
+  if (total) total.textContent = num(lookup?.summary?.total_po_qty || 0);
+  if (sku) sku.textContent = num(lookup?.summary?.count_po_sku || 0);
+
+  const box = document.getElementById("po-lookup-summary");
+  if (box && typeof renderPoLookupSummary === "function") {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderPoLookupSummary(lookup);
+    const next = wrapper.firstElementChild;
+    if (next) box.replaceWith(next);
+  }
+}
+
+function nextLocalQueueNo(ticketType, slot) {
+  const queue = (state.dashboard?.queue || []).concat(getLocalTickets());
+  return nextLocalQueueNoFromList(ticketType, slot, queue);
+}
+
 function lookupPo(silent = false) {
   const form = document.getElementById("security-form");
   if (!form) return null;
 
-  const po = normalizeKey(form.po_number?.value);
-  if (!po) return null;
-
-  const match = v2PoIndex?.[po];
-  if (!match) {
+  const poText = form.po_number?.value || "";
+  const poNumbers = parsePoNumbers(poText);
+  if (!poNumbers.length) {
     state.poLookup = null;
-    if (!silent) showToast("PO tidak ketemu di Data V2");
+    updatePoLookupUi(null);
     return null;
   }
 
-  state.poLookup = { found: true, summary: match };
-  if (form.vendor_name) form.vendor_name.value = match.vendor_name || "";
-  if (form.slot) form.slot.value = String(match.slot || form.slot.value || "3");
+  const lookup = lookupMultiplePo(poText);
+  state.poLookup = lookup;
+  updatePoLookupUi(lookup);
 
-  const total = document.getElementById("security-total-qty");
-  const sku = document.getElementById("security-count-sku");
-  if (total) total.textContent = num(match.total_po_qty || 0);
-  if (sku) sku.textContent = num(match.count_po_sku || 0);
+  if (!silent) {
+    if (lookup.all_found) {
+      showToast(`${lookup.items.length} PO ditemukan dari Data V2`);
+    } else if (lookup.found) {
+      showToast(
+        `${lookup.items.length} PO ditemukan, ${lookup.missing_po.length} tidak ketemu`,
+      );
+    } else {
+      showToast("PO tidak ketemu di Data V2");
+    }
+  }
 
-  if (!silent) showToast("PO ditemukan dari Data V2");
-  return match;
+  return lookup.found ? lookup : null;
 }
 
 function nextLocalQueueNo(ticketType, slot) {
@@ -520,36 +622,72 @@ function submitSecurity(e) {
   const form = e.target;
   if (!validateSecurityForm(form)) return;
 
-  lookupPo(true);
-  const body = Object.fromEntries(new FormData(form).entries());
-  body.plat_number = normalizePlateValue(body.plat_number);
-  body.status = "WAITING";
-  body.total_po_qty =
-    state.poLookup?.summary?.total_po_qty ||
-    toNumberV2(document.getElementById("security-total-qty")?.textContent);
-  body.count_po_sku =
-    state.poLookup?.summary?.count_po_sku ||
-    toNumberV2(document.getElementById("security-count-sku")?.textContent);
-  body.created_at = body.register_time || formatDateTimeLocal(new Date());
-  body.queue_no = nextLocalQueueNo(body.ticket_type, body.slot);
-  body.gate = "-";
-  body.source = "LOCAL_SECURITY";
+  const lookup = lookupPo(true);
+  if (!lookup || !lookup.all_found) {
+    const missingText = lookup?.missing_po?.length
+      ? " Missing: " + lookup.missing_po.join(", ")
+      : "";
+    showToast("Semua PO wajib valid sebelum buat nomor." + missingText);
+    return;
+  }
+
+  const base = Object.fromEntries(new FormData(form).entries());
+  const poItems = lookup.items || [];
+
+  if (!poItems.length) {
+    showToast("PO belum valid.");
+    return;
+  }
 
   const rows = getLocalTickets();
-  rows.unshift(body);
+  const newRows = [];
+  const registerTime = base.register_time || formatDateTimeLocal(new Date());
+  let queuePool = (state.dashboard?.queue || []).concat(rows);
+
+  for (const item of poItems) {
+    const rowSlot =
+      String(base.ticket_type || "").toUpperCase() === "DROP"
+        ? base.slot || item.slot || "3"
+        : item.slot || base.slot || "3";
+
+    const row = {
+      ...base,
+      po_number: item.po_number,
+      po_numbers: lookup.summary.po_numbers,
+      vendor_name: item.vendor_name || base.vendor_name || "",
+      slot: rowSlot,
+      plat_number: normalizePlateValue(base.plat_number),
+      status: "WAITING",
+      total_po_qty: toNumberV2(item.total_po_qty),
+      count_po_sku: toNumberV2(item.count_po_sku),
+      created_at: registerTime,
+      register_time: registerTime,
+      queue_no: nextLocalQueueNoFromList(
+        base.ticket_type,
+        rowSlot,
+        queuePool.concat(newRows),
+      ),
+      gate: "-",
+      source: "LOCAL_SECURITY",
+    };
+
+    newRows.push(row);
+  }
+
+  rows.unshift(...newRows);
   saveLocalTickets(rows);
 
   if (v2RawResponse) {
     state.dashboard = buildDashboardFromV2(v2RawResponse);
     state.options = state.dashboard.options || state.options;
   } else {
-    state.dashboard.queue.unshift(body);
-    state.dashboard.report_preview.unshift(body);
+    state.dashboard.queue.unshift(...newRows);
+    state.dashboard.report_preview.unshift(...newRows);
   }
 
-  state.lastCalled = body;
-  document.getElementById("new-queue-number").textContent = body.queue_no;
-  showToast("Nomor " + body.queue_no + " dibuat lokal");
+  state.lastCalled = newRows[0];
+  document.getElementById("new-queue-number").textContent = newRows[0].queue_no;
+  showToast(`${newRows.length} ticket dibuat dari ${poItems.length} PO`);
   renderPage("daftar", false);
 }
 

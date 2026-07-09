@@ -123,6 +123,37 @@ function kpiCard(k) {
   </div>`;
 }
 
+function renderPoLookupSummary(lookup) {
+  if (!lookup) {
+    return `<div id="po-lookup-summary" class="mt-3 text-[12px] text-on-surface-variant">
+      Input bisa multiple PO pakai koma. Contoh: <b>PO1, PO2, PO3</b>.
+    </div>`;
+  }
+
+  const found = lookup.items || [];
+  const missing = lookup.missing_po || [];
+  const chips = found
+    .map(
+      (x) =>
+        `<span class="inline-flex items-center rounded-full bg-primary/10 border border-primary/20 text-primary px-2 py-1 mr-1 mb-1 text-[11px] font-bold">${esc(x.po_number || "-")}</span>`,
+    )
+    .join("");
+
+  const missingChips = missing
+    .map(
+      (x) =>
+        `<span class="inline-flex items-center rounded-full bg-error/10 border border-error/20 text-error px-2 py-1 mr-1 mb-1 text-[11px] font-bold">${esc(x)}</span>`,
+    )
+    .join("");
+
+  return `<div id="po-lookup-summary" class="mt-3 rounded-lg border border-outline-variant/40 bg-surface-container/35 p-3 text-[12px] text-on-surface-variant">
+    <div class="font-bold text-on-surface mb-2">PO terdeteksi: ${num(found.length)} ditemukan${missing.length ? `, ${num(missing.length)} tidak ketemu` : ""}</div>
+    <div>${chips || `<span class="text-on-surface-variant">Belum ada PO valid.</span>`}</div>
+    ${missing.length ? `<div class="mt-2"><span class="font-bold text-error">Missing:</span> ${missingChips}</div>` : ""}
+    <div class="mt-2">Delimiter pakai koma. Saat submit, setiap PO akan dibuat row/ticket sendiri.</div>
+  </div>`;
+}
+
 function pageDaftar() {
   const o = state.options;
   const lookup = state.poLookup;
@@ -132,7 +163,7 @@ function pageDaftar() {
       <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
         <div>
           <h3 class="font-headline-md text-headline-md mb-1">Security Input</h3>
-          <p class="text-on-surface-variant">Isi PO dulu. Vendor, qty, SKU, dan slot auto lookup dari Data V2 tanpa klik tombol.</p>
+          <p class="text-on-surface-variant">Isi PO dulu. PO bisa multiple pakai koma; vendor, qty, SKU, dan slot auto lookup dari Data V2.</p>
         </div>
         <div class="thin-tab rounded-lg px-4 py-2 font-label-sm flex items-center gap-2 w-fit opacity-80">
           <span class="material-symbols-outlined">sync</span>Auto lookup PO
@@ -140,7 +171,7 @@ function pageDaftar() {
       </div>
       <form id="security-form" onsubmit="submitSecurity(event)">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${textInput("po_number", "PO Number", "ID1/POR/...", "po-list", lookup?.summary?.po_number, 'required oninput="schedulePoLookup()" onblur="lookupPo(true)" autocomplete="off"')}
+          ${textInput("po_number", "PO Number", "PO1, PO2, PO3", "po-list", lookup?.summary?.po_number, 'required oninput="schedulePoLookup()" onblur="lookupPo(true)" autocomplete="off"')}
           ${textInput("vendor_name", "Vendor Name", "Auto dari PO", "vendor-list", lookup?.summary?.vendor_name, "required")}
           ${selectInput("ticket_type", "Tipe Tiket", ["REG", "VIP", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
           ${selectInput("slot", "Slot", buildSlotOptions(lookup?.summary?.slot), lookup?.summary?.slot || "3", "required")}
@@ -160,6 +191,7 @@ function pageDaftar() {
             <div class="bg-surface-container/60 border border-outline-variant rounded-lg p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Count SKU</div><div id="security-count-sku" class="font-queue-id text-primary">${num(lookup?.summary?.count_po_sku || 0)}</div></div>
           </div></label>
         </div>
+        ${renderPoLookupSummary(lookup)}
         <p class="form-help mt-3">Catatan: No KTP tidak wajib. Plat otomatis disimpan tanpa spasi; contoh B 1234 XYZ jadi B1234XYZ. Plat angka doang ditolak.</p>
         ${datalists()}
         <button class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110" type="submit">
