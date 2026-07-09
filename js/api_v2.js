@@ -1141,6 +1141,27 @@ function pickMultiValue(list = [], index = 0) {
   return list[index] || list[list.length - 1] || list[0] || "";
 }
 
+function getRegisteredPoSetApi() {
+  const set = new Set();
+  const rows = state.dashboard?.queue || [];
+
+  rows.forEach((row) => {
+    const rawValues = [];
+    if (Array.isArray(row.po_numbers)) rawValues.push(...row.po_numbers);
+    if (row.po_number) rawValues.push(row.po_number);
+    if (row.raw?.po_number) rawValues.push(row.raw.po_number);
+
+    rawValues.forEach((value) => {
+      parsePoNumbers(value).forEach((po) => {
+        const key = normalizeKey(po);
+        if (key) set.add(key);
+      });
+    });
+  });
+
+  return set;
+}
+
 function sumPoItems(items = []) {
   return {
     po_number: items
@@ -1229,6 +1250,19 @@ async function submitSecurity(e) {
 
     if (!poItems.length) {
       showToast("PO belum valid.");
+      return;
+    }
+
+    const registeredSet = getRegisteredPoSetApi();
+    const duplicatedPo = poItems
+      .map((item) => item.po_number || item.po_input)
+      .filter((po) => registeredSet.has(normalizeKey(po)));
+
+    if (duplicatedPo.length) {
+      showToast(
+        "PO sudah daftar dan tidak bisa didaftarkan lagi: " +
+          duplicatedPo.join(", "),
+      );
       return;
     }
 

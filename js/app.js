@@ -353,7 +353,7 @@ function kpiCard(k) {
 function renderPoLookupSummary(lookup) {
   if (!lookup) {
     return `<div id="po-lookup-summary" class="mt-3 text-[12px] text-on-surface-variant">
-      Pilih Vendor Name dulu, lalu pilih PO. 1 plat + banyak PO vendor sama akan jadi 1 baris antrian.
+      Pilih Vendor Name dulu, lalu pilih PO. PO yang sudah daftar otomatis disembunyikan. 1 plat + banyak PO vendor sama akan jadi 1 baris antrian.
     </div>`;
   }
 
@@ -466,6 +466,14 @@ function removePlateRow(btn) {
     row.querySelectorAll("input").forEach((input) => (input.value = ""));
   } else row.remove();
   syncPlateMultiInput();
+}
+
+function resetPlateRows() {
+  const wrap = document.getElementById("plate-multi-rows");
+  const hidden = document.getElementById("plat-number-hidden");
+  if (!wrap) return;
+  wrap.innerHTML = plateRowInput("", 0);
+  if (hidden) hidden.value = "";
 }
 
 function collectPlateRows() {
@@ -1874,6 +1882,57 @@ function renderPoSelectedChips(values) {
     : `<span class="text-[12px] text-on-surface-variant px-1">Belum ada PO dipilih</span>`;
 }
 
+function getRegisteredPoSet() {
+  const set = new Set();
+  const rows = state.dashboard?.queue || [];
+
+  rows.forEach((row) => {
+    const rawValues = [];
+
+    if (Array.isArray(row.po_numbers)) rawValues.push(...row.po_numbers);
+    if (row.po_number) rawValues.push(row.po_number);
+    if (row.raw?.po_number) rawValues.push(row.raw.po_number);
+
+    rawValues.forEach((value) => {
+      parsePoInputText(value).forEach((po) => {
+        const key = normalizeKey(po);
+        if (key) set.add(key);
+      });
+    });
+  });
+
+  return set;
+}
+
+function isPoAlreadyRegistered(po) {
+  return getRegisteredPoSet().has(normalizeKey(po));
+}
+
+function clearSecurityFormState() {
+  state.poLookup = null;
+
+  const form = document.getElementById("security-form");
+  if (!form) return;
+
+  try {
+    form.reset();
+  } catch (err) {}
+
+  if (form.po_number) form.po_number.value = "";
+  const poSearch = document.getElementById("po-search-input");
+  if (poSearch) poSearch.value = "";
+
+  renderPoSelectedChips([]);
+  filterPoDropdown?.();
+
+  const total = document.getElementById("security-total-qty");
+  const sku = document.getElementById("security-count-sku");
+  if (total) total.textContent = "0";
+  if (sku) sku.textContent = "0";
+
+  if (typeof resetPlateRows === "function") resetPlateRows();
+}
+
 function getSelectedVendorFilter() {
   const form = document.getElementById("security-form");
   return String(form?.vendor_name?.value || "").trim();
@@ -1919,11 +1978,12 @@ function getFilteredPoOptions() {
   );
   const vendorFilter = getSelectedVendorFilter();
   const selected = new Set(getSelectedPoNumbers().map((x) => normalizeKey(x)));
+  const registered = getRegisteredPoSet();
 
   return (state.options.po_number || [])
     .filter((po) => {
       const key = normalizeKey(po);
-      if (!key || selected.has(key)) return false;
+      if (!key || selected.has(key) || registered.has(key)) return false;
 
       const meta = getPoMeta(po);
       const vendorOk = vendorMatchesFilter(
@@ -1945,14 +2005,15 @@ function filterPoDropdown() {
     document.getElementById("po-search-input")?.value || "",
   ).trim();
   const vendorFilter = getSelectedVendorFilter();
+  const registeredCount = getRegisteredPoSet().size;
 
   if (!options.length) {
     const msg = vendorFilter
       ? q
-        ? "PO tidak ada untuk vendor/filter tersebut. Cek Vendor Name atau keyword PO."
-        : "Belum ada PO untuk vendor ini. Ketik PO atau pilih vendor lain."
-      : "Pilih / ketik Vendor Name dulu supaya list PO terfilter.";
-    list.innerHTML = `<div class="px-3 py-3 text-[12px] text-on-surface-variant">${msg}</div>`;
+        ? "PO tidak ada untuk vendor/filter tersebut, atau PO sudah pernah daftar."
+        : "Belum ada PO available untuk vendor ini. PO yang sudah daftar otomatis disembunyikan."
+      : "Pilih / ketik Vendor Name dulu supaya list PO terfilter. PO yang sudah daftar otomatis disembunyikan.";
+    list.innerHTML = `<div class="px-3 py-3 text-[12px] text-on-surface-variant">${msg}${registeredCount ? `<div class="mt-1 text-[11px] text-warning font-bold">${registeredCount} PO sudah terdaftar dan disembunyikan.</div>` : ""}</div>`;
     return;
   }
 
@@ -1976,7 +2037,31 @@ function filterPoDropdown() {
 function addPoChoice(value) {
   const incoming = parsePoInputText(value);
   if (!incoming.length) return;
-  setSelectedPoNumbers(getSelectedPoNumbers().concat(incoming), true);
+
+  const registered = getRegisteredPoSet();
+  const allowed = [];
+  const blocked = [];
+
+  incoming.forEach((po) => {
+    const key = normalizeKey(po);
+    if (registered.has(key)) blocked.push(po);
+    else allowed.push(po);
+  });
+
+  if (blocked.length) {
+    showToast(
+      "PO sudah daftar dan tidak bisa dipilih lagi: " + blocked.join(", "),
+    );
+  }
+
+  if (!allowed.length) {
+    const input = document.getElementById("po-search-input");
+    if (input) input.value = "";
+    filterPoDropdown();
+    return;
+  }
+
+  setSelectedPoNumbers(getSelectedPoNumbers().concat(allowed), true);
   const input = document.getElementById("po-search-input");
   if (input) input.value = "";
   filterPoDropdown();
@@ -2396,6 +2481,14 @@ function renderPage(page, toast = true) {
         "Role kamu tidak punya akses menu " + (pageMeta[safe]?.title || safe),
       );
     safe = fallback;
+  }
+
+  // Kalau user pindah dari menu Daftar, kosongkan state form Security.
+  if (state.page === "daftar" && safe !== "daftar") {
+    clearSecurityFormState();
+  }
+  if (safe === "daftar") {
+    state.poLookup = null;
   }
 
   state.page = safe;
