@@ -2657,137 +2657,341 @@ function getUnloadingEstimateInfo(row = {}) {
   const status = String(row.status || "").toUpperCase();
   const targetHours = getInboundSlaHours(row);
   const targetMinutes = targetHours ? targetHours * 60 : 0;
+
+  const registerText = getFirstValue(row, [
+    "register_time",
+    "created_at",
+    "Timestamp",
+  ]);
+  const calledText = getFirstValue(row, ["called_at"]);
   const startText = getFirstValue(row, ["start_unloading_at"]);
   const completedText = getFirstValue(row, ["completed_at"]);
+  const expiredText = getFirstValue(row, ["expired_at"]);
   const directFinish = getFirstValue(row, [
     "sla_finished_at",
     "SLA Finished At",
   ]);
+
+  const registerDate = parseDateLocal(registerText);
+  const calledDate = parseDateLocal(calledText);
   const startDate = parseDateLocal(startText);
   const completedDate = parseDateLocal(completedText);
+  const expiredDate = parseDateLocal(expiredText);
   const directDate = parseDateLocal(directFinish);
 
+  // Prioritas estimasi:
+  // 1. SLA Finished At dari backend/sheet.
+  // 2. Start bongkar + SLA fleet.
+  // 3. Kalau belum mulai bongkar, estimasi operasional dari register/called time + SLA fleet
+  //    supaya driver/monitor tetap punya jam target yang jelas, bukan hanya "2 jam".
+  const baseDate = startDate || calledDate || registerDate;
+  const baseText = startText || calledText || registerText || "";
+  const estimateSource = directDate
+    ? "SLA Finished At"
+    : startDate
+      ? "Start Bongkar + SLA"
+      : calledDate
+        ? "Called + SLA"
+        : registerDate
+          ? "Register + SLA"
+          : "";
+
   let estimateDate = directDate;
-  if (!estimateDate && startDate && targetHours) {
-    estimateDate = new Date(startDate.getTime() + targetHours * 60 * 60 * 1000);
+  if (!estimateDate && baseDate && targetHours) {
+    estimateDate = new Date(baseDate.getTime() + targetHours * 60 * 60 * 1000);
   }
 
   const estimateText = estimateDate
     ? formatDateTimeLocal(estimateDate)
     : directFinish || "";
   const now = new Date();
-  const compareDate = completedDate || now;
+  const compareDate = completedDate || expiredDate || now;
+  const hasEstimate = !!estimateDate;
   const outSla = !!(
-    estimateDate && compareDate.getTime() > estimateDate.getTime()
+    hasEstimate && compareDate.getTime() > estimateDate.getTime()
   );
-  const diffMinutes = estimateDate
+  const diffMinutes = hasEstimate
     ? Math.floor((estimateDate.getTime() - compareDate.getTime()) / 60000)
     : null;
 
-  let label = "BELUM BONGKAR";
+  const runningStartText = startText || calledText || registerText || "";
+  const runningEndText = completedText || expiredText || "";
+  const runningMinutes = minutesBetweenValues(
+    runningStartText,
+    runningEndText || formatDateTimeLocal(now),
+  );
+
+  let label = "BELUM START";
   let badgeClass =
     "bg-surface-container text-on-surface-variant border-outline-variant";
 
   if (!targetHours) {
     label = "NO SLA";
-  } else if (!startDate && !estimateDate) {
-    label =
-      status.includes("WAIT") || status.includes("CALLED")
-        ? "BELUM START"
-        : "NO ESTIMATE";
+  } else if (!hasEstimate) {
+    label = "NO ESTIMATE";
   } else if (outSla) {
-    label = "OUT SLA";
+    label = status.includes("UNLOADING") ? "OUT SLA BONGKAR" : "OUT SLA";
     badgeClass = "bg-error/10 text-error border-error/30";
   } else if (status.includes("COMPLETED")) {
     label = "SLA OK";
     badgeClass = "bg-success/10 text-success border-success/30";
-  } else {
+  } else if (status.includes("UNLOADING")) {
     label = "ON TRACK";
     badgeClass = "bg-success/10 text-success border-success/30";
+  } else {
+    label = "BELUM START";
+    badgeClass = "bg-warning/10 text-warning border-warning/30";
   }
 
   return {
     targetHours,
     targetMinutes,
+    targetLabel: targetHours ? `${targetHours} jam` : "-",
+    registerText,
+    calledText,
     startText,
     completedText,
+    expiredText,
+    baseText,
+    estimateSource,
     estimateText,
     outSla,
     diffMinutes,
+    runningStartText,
+    runningEndText,
+    runningMinutes,
     label,
     badgeClass,
   };
 }
 
+function donutGradient(items = []) {
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  if (!total) return "background: conic-gradient(#e2e8f0 0% 100%);";
+  let cursor = 0;
+  const parts = items.map((item) => {
+    const pct = (Number(item.value || 0) / total) * 100;
+    const start = cursor;
+    cursor += pct;
+    return `${item.color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+  });
+  return `background: conic-gradient(${parts.join(", ")});`;
+}
+
+function donutChartCard(title, subtitle, items = [], centerText = "") {
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  return `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/45 p-4">
+    <div class="mb-4">
+      <h5 class="font-bold text-on-surface">${esc(title)}</h5>
+      <p class="text-[11px] text-on-surface-variant">${esc(subtitle || "")}</p>
+    </div>
+    <div class="flex flex-col sm:flex-row items-center gap-4">
+      <div class="relative h-36 w-36 shrink-0 rounded-full border border-outline-variant/40 shadow-inner" style="${donutGradient(items)}">
+        <div class="absolute inset-5 rounded-full bg-surface-container/95 border border-outline-variant/40 flex flex-col items-center justify-center text-center">
+          <div class="font-queue-id text-3xl text-primary">${esc(centerText || num(total))}</div>
+          <div class="text-[10px] uppercase tracking-wider text-on-surface-variant">Total</div>
+        </div>
+      </div>
+      <div class="w-full space-y-2">
+        ${
+          items
+            .map((item) => {
+              const pct = total
+                ? Math.round((Number(item.value || 0) / total) * 100)
+                : 0;
+              return `<div class="flex items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="h-3 w-3 rounded-full shrink-0" style="background:${item.color}"></span>
+              <span class="font-bold text-on-surface truncate">${esc(item.label)}</span>
+            </div>
+            <div class="font-queue-id text-primary whitespace-nowrap">${num(item.value)} <span class="text-on-surface-variant">(${num(pct)}%)</span></div>
+          </div>`;
+            })
+            .join("") ||
+          `<div class="text-center text-on-surface-variant text-sm py-4">Belum ada data.</div>`
+        }
+      </div>
+    </div>
+  </div>`;
+}
+
+function horizontalBarChart(title, icon, items = [], total = 0) {
+  return `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+    <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-primary">${esc(icon || "bar_chart")}</span><h4 class="font-bold text-on-surface">${esc(title)}</h4></div>
+    <div class="space-y-3">
+      ${items.map((item) => chartBar(item.label, item.value, total || 1, item.colorClass || "bg-primary", item.note || "")).join("") || `<div class="text-on-surface-variant text-sm p-4 text-center border border-dashed border-outline-variant rounded-xl">Belum ada data.</div>`}
+    </div>
+  </div>`;
+}
+
 function monitorChartReport(rows = []) {
   const d = getMonitoringDetailStats(rows);
   const total = Math.max(1, d.total);
+  const estimateInfos = rows.map((row) => ({
+    row,
+    info: getUnloadingEstimateInfo(row),
+  }));
+  const outSlaRows = estimateInfos
+    .filter((x) => x.info.outSla)
+    .map((x) => x.row);
+  const outSlaBongkarRows = estimateInfos
+    .filter(
+      (x) =>
+        x.info.outSla &&
+        String(x.row.status || "")
+          .toUpperCase()
+          .includes("UNLOADING"),
+    )
+    .map((x) => x.row);
+  const noEstimateRows = estimateInfos
+    .filter((x) => !x.info.estimateText)
+    .map((x) => x.row);
+  const onTrackRows = estimateInfos
+    .filter((x) => x.info.label === "ON TRACK" || x.info.label === "SLA OK")
+    .map((x) => x.row);
+  const belumStartRows = estimateInfos
+    .filter((x) => x.info.label === "BELUM START")
+    .map((x) => x.row);
   const fleetGroups = groupRowsByValue(rows, (r) => r.fleet_type || "UNKNOWN")
     .sort((a, b) => b.items.length - a.items.length)
     .slice(0, 8);
-  const outSlaRows = rows.filter((r) => getUnloadingEstimateInfo(r).outSla);
-  const noEstimateRows = rows.filter((r) => {
-    const info = getUnloadingEstimateInfo(r);
-    const st = String(r.status || "").toUpperCase();
-    return (
-      !st.includes("COMPLETED") && !st.includes("EXPIRED") && !info.estimateText
-    );
-  });
 
-  return `<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
-      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-primary">bar_chart</span><h4 class="font-bold text-on-surface">Chart Status Checker</h4></div>
-      <div class="space-y-3">
-        ${chartBar("WAITING", d.waiting, total, "bg-tertiary", `${num(d.waiting)} ticket`)}
-        ${chartBar("CALLED", d.called, total, "bg-primary", `${num(d.called)} ticket`)}
-        ${chartBar("UNLOADING", d.unloading, total, "bg-warning", `${num(d.unloading)} ticket`)}
-        ${chartBar("COMPLETED", d.completed, total, "bg-success", `${num(d.completed)} ticket`)}
-        ${chartBar("EXPIRED", d.expired, total, "bg-error", `${num(d.expired)} ticket`)}
-      </div>
+  const statusItems = [
+    { label: "WAITING", value: d.waiting, color: "#f97316" },
+    { label: "CALLED", value: d.called, color: "#2563eb" },
+    { label: "UNLOADING", value: d.unloading, color: "#eab308" },
+    { label: "COMPLETED", value: d.completed, color: "#16a34a" },
+    { label: "EXPIRED", value: d.expired, color: "#dc2626" },
+  ];
+  const slaItems = [
+    { label: "ON TRACK / OK", value: onTrackRows.length, color: "#16a34a" },
+    { label: "BELUM START", value: belumStartRows.length, color: "#f97316" },
+    { label: "OUT SLA", value: outSlaRows.length, color: "#dc2626" },
+    { label: "NO ESTIMATE", value: noEstimateRows.length, color: "#64748b" },
+  ];
+  const fleetItems = fleetGroups.slice(0, 5).map((g, idx) => ({
+    label: g.key,
+    value: g.items.length,
+    color:
+      ["#2563eb", "#16a34a", "#f97316", "#7c3aed", "#0891b2"][idx] || "#64748b",
+  }));
+
+  return `<div class="space-y-4 mb-6">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      ${donutChartCard("Donut Status Checker", "Komposisi status dari Output form", statusItems, num(d.total))}
+      ${donutChartCard("Donut SLA Bongkar", "ON track, belum start, out SLA, dan no estimate", slaItems, num(d.total))}
+      ${donutChartCard("Donut Fleet / Armada", "Top armada berdasarkan jumlah ticket", fleetItems, num(d.total))}
     </div>
 
-    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
-      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-error">speed</span><h4 class="font-bold text-on-surface">Chart SLA Bongkar</h4></div>
-      <div class="space-y-3">
-        ${chartBar("SLA OK", d.slaOk, total, "bg-success", `${num(d.slaOk)} ticket`)}
-        ${chartBar("SLA MISS", d.slaMiss, total, "bg-error", `${num(d.slaMiss)} ticket`)}
-        ${chartBar("ON PROCESS", d.slaProcess, total, "bg-warning", `${num(d.slaProcess)} ticket`)}
-        ${chartBar("OUT SLA BONGKAR", outSlaRows.length, total, "bg-error", `${num(outSlaRows.length)} mobil`)}
-        ${chartBar("NO ESTIMATE", noEstimateRows.length, total, "bg-outline", `${num(noEstimateRows.length)} mobil`)}
-      </div>
-    </div>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      ${horizontalBarChart(
+        "Bar Status Checker",
+        "bar_chart",
+        [
+          {
+            label: "WAITING",
+            value: d.waiting,
+            colorClass: "bg-tertiary",
+            note: `${num(d.waiting)} ticket`,
+          },
+          {
+            label: "CALLED",
+            value: d.called,
+            colorClass: "bg-primary",
+            note: `${num(d.called)} ticket`,
+          },
+          {
+            label: "UNLOADING",
+            value: d.unloading,
+            colorClass: "bg-warning",
+            note: `${num(d.unloading)} ticket`,
+          },
+          {
+            label: "COMPLETED",
+            value: d.completed,
+            colorClass: "bg-success",
+            note: `${num(d.completed)} ticket`,
+          },
+          {
+            label: "EXPIRED",
+            value: d.expired,
+            colorClass: "bg-error",
+            note: `${num(d.expired)} ticket`,
+          },
+        ],
+        total,
+      )}
 
-    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
-      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-tertiary">local_shipping</span><h4 class="font-bold text-on-surface">Chart Fleet / Armada</h4></div>
-      <div class="space-y-3">
-        ${
-          fleetGroups
-            .map((g) => {
-              const qty = g.items.reduce(
-                (sum, r) =>
-                  sum + cleanNumber(r.total_po_qty ?? r.actual_quantity ?? 0),
-                0,
-              );
-              const sku = g.items.reduce(
-                (sum, r) => sum + cleanNumber(r.count_po_sku ?? r.sku ?? 0),
-                0,
-              );
-              const miss = g.items.filter(
-                (r) =>
-                  getUnloadingEstimateInfo(r).outSla ||
-                  getInboundSlaInfo(r).status === "SLA MISS",
-              ).length;
-              return chartBar(
-                g.key,
-                g.items.length,
-                total,
-                miss ? "bg-error" : "bg-primary",
-                `${num(g.items.length)} ticket · Qty ${num(qty)} · SKU ${num(sku)} · Miss ${num(miss)}`,
-              );
-            })
-            .join("") ||
-          `<div class="text-on-surface-variant text-sm p-4 text-center border border-dashed border-outline-variant rounded-xl">Belum ada data fleet.</div>`
-        }
+      ${horizontalBarChart(
+        "Bar SLA Bongkar",
+        "speed",
+        [
+          {
+            label: "ON TRACK / OK",
+            value: onTrackRows.length,
+            colorClass: "bg-success",
+            note: `${num(onTrackRows.length)} mobil`,
+          },
+          {
+            label: "BELUM START",
+            value: belumStartRows.length,
+            colorClass: "bg-warning",
+            note: `${num(belumStartRows.length)} mobil`,
+          },
+          {
+            label: "OUT SLA BONGKAR",
+            value: outSlaBongkarRows.length,
+            colorClass: "bg-error",
+            note: `${num(outSlaBongkarRows.length)} mobil sedang bongkar lewat target`,
+          },
+          {
+            label: "OUT SLA TOTAL",
+            value: outSlaRows.length,
+            colorClass: "bg-error",
+            note: `${num(outSlaRows.length)} ticket lewat estimasi`,
+          },
+          {
+            label: "NO ESTIMATE",
+            value: noEstimateRows.length,
+            colorClass: "bg-on-surface-variant",
+            note: `${num(noEstimateRows.length)} mobil`,
+          },
+        ],
+        total,
+      )}
+
+      <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+        <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-tertiary">local_shipping</span><h4 class="font-bold text-on-surface">Bar Fleet / Armada</h4></div>
+        <div class="space-y-3">
+          ${
+            fleetGroups
+              .map((g) => {
+                const qty = g.items.reduce(
+                  (sum, r) =>
+                    sum + cleanNumber(r.total_po_qty ?? r.actual_quantity ?? 0),
+                  0,
+                );
+                const sku = g.items.reduce(
+                  (sum, r) => sum + cleanNumber(r.count_po_sku ?? r.sku ?? 0),
+                  0,
+                );
+                const miss = g.items.filter(
+                  (r) =>
+                    getUnloadingEstimateInfo(r).outSla ||
+                    getInboundSlaInfo(r).status === "SLA MISS",
+                ).length;
+                return chartBar(
+                  g.key,
+                  g.items.length,
+                  total,
+                  miss ? "bg-error" : "bg-primary",
+                  `${num(g.items.length)} ticket · Qty ${num(qty)} · SKU ${num(sku)} · Miss ${num(miss)}`,
+                );
+              })
+              .join("") ||
+            `<div class="text-on-surface-variant text-sm p-4 text-center border border-dashed border-outline-variant rounded-xl">Belum ada data fleet.</div>`
+          }
+        </div>
       </div>
     </div>
   </div>`;
@@ -2816,11 +3020,18 @@ function unloadingEstimateReport(rows = []) {
     });
 
   const outSlaCount = candidates.filter((x) => x.info.outSla).length;
+  const outSlaBongkarCount = candidates.filter(
+    (x) =>
+      x.info.outSla &&
+      String(x.row.status || "")
+        .toUpperCase()
+        .includes("UNLOADING"),
+  ).length;
   const onTrackCount = candidates.filter(
     (x) => x.info.label === "ON TRACK" || x.info.label === "SLA OK",
   ).length;
   const noStartCount = candidates.filter(
-    (x) => !x.info.startText && !x.info.estimateText,
+    (x) => x.info.label === "BELUM START",
   ).length;
 
   return `<div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
@@ -2828,19 +3039,20 @@ function unloadingEstimateReport(rows = []) {
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
           <h4 class="font-bold text-on-surface">Report Estimasi Selesai Bongkar per Mobil</h4>
-          <p class="text-xs text-on-surface-variant">Referensi utama: <b>SLA Finished At</b>. Kalau kosong, fallback dari Start Bongkar + rule SLA fleet.</p>
+          <p class="text-xs text-on-surface-variant">Estimasi prioritas dari <b>SLA Finished At</b>. Kalau kosong: Start Bongkar + SLA. Kalau belum start: Register/Called + SLA supaya jam target tetap jelas.</p>
         </div>
         <div class="flex flex-wrap gap-2 text-xs font-bold">
-          <span class="rounded-full bg-error/10 text-error border border-error/30 px-3 py-1">OUT SLA: ${num(outSlaCount)}</span>
+          <span class="rounded-full bg-error/10 text-error border border-error/30 px-3 py-1">OUT SLA TOTAL: ${num(outSlaCount)}</span>
+          <span class="rounded-full bg-error/10 text-error border border-error/30 px-3 py-1">OUT SLA BONGKAR: ${num(outSlaBongkarCount)}</span>
           <span class="rounded-full bg-success/10 text-success border border-success/30 px-3 py-1">ON TRACK/OK: ${num(onTrackCount)}</span>
-          <span class="rounded-full bg-surface-container text-on-surface-variant border border-outline-variant px-3 py-1">BELUM START: ${num(noStartCount)}</span>
+          <span class="rounded-full bg-warning/10 text-warning border border-warning/30 px-3 py-1">BELUM START: ${num(noStartCount)}</span>
         </div>
       </div>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-left text-sm">
         <thead class="bg-surface-container text-on-surface-variant">
-          <tr>${["Queue", "Plat", "Vendor", "Fleet", "Gate", "Status", "Start Bongkar", "SLA Target", "Estimasi Selesai", "Sisa/Lewat", "SLA Bongkar"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr>
+          <tr>${["Queue", "Jam Berjalan", "Plat", "Vendor", "Fleet", "Gate", "Status", "Basis Hitung", "SLA Target", "Estimasi Selesai", "Sisa/Lewat", "SLA Bongkar"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr>
         </thead>
         <tbody class="divide-y divide-outline-variant/10">
           ${
@@ -2852,22 +3064,37 @@ function unloadingEstimateReport(rows = []) {
                     : info.diffMinutes >= 0
                       ? `Sisa ${formatMinutesCompact(info.diffMinutes)}`
                       : `Lewat ${formatMinutesCompact(Math.abs(info.diffMinutes))}`;
+                const deltaClass =
+                  info.diffMinutes === null
+                    ? "text-on-surface-variant"
+                    : info.diffMinutes >= 0
+                      ? "text-success"
+                      : "text-error";
+                const status = String(row.status || "").toUpperCase();
+                const runningDone = info.runningEndText || "";
+                const runningText = runningDone
+                  ? formatMinutesCompact(info.runningMinutes)
+                  : liveWaitingText(info.runningStartText, "");
+                const basis = info.estimateSource
+                  ? `${info.estimateSource}${info.baseText ? ` · ${info.baseText}` : ""}`
+                  : "-";
                 return `<tr class="hover:bg-primary/5 ${info.outSla ? "bg-error/5" : ""}">
               <td class="px-4 py-3 font-queue-id text-primary whitespace-nowrap">${esc(row.queue_no || "-")}</td>
+              <td class="px-4 py-3 font-queue-id whitespace-nowrap ${info.outSla ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(info.runningStartText || "")}" data-completed="${esc(runningDone)}" data-status="${esc(status)}">${esc(runningText)}</td>
               <td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(row.plat_number || "-")}</td>
               <td class="px-4 py-3 min-w-[180px]">${esc(row.vendor_name || "-")}</td>
               <td class="px-4 py-3 whitespace-nowrap font-bold">${esc(row.fleet_type || "-")}</td>
               <td class="px-4 py-3 whitespace-nowrap">${esc(row.gate || "-")}</td>
               <td class="px-4 py-3 whitespace-nowrap">${monitorStatusBadge(row.status || "-")}</td>
-              <td class="px-4 py-3 whitespace-nowrap">${esc(info.startText || "-")}</td>
-              <td class="px-4 py-3 whitespace-nowrap font-bold">${esc(info.targetHours ? `${info.targetHours} jam` : "-")}</td>
-              <td class="px-4 py-3 whitespace-nowrap font-queue-id">${esc(info.estimateText || "-")}</td>
-              <td class="px-4 py-3 whitespace-nowrap font-queue-id ${info.outSla ? "text-error" : "text-success"}">${esc(delta)}</td>
+              <td class="px-4 py-3 min-w-[220px] text-xs text-on-surface-variant">${esc(basis)}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-bold">${esc(info.targetLabel || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-queue-id text-primary">${esc(info.estimateText || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-queue-id ${deltaClass}" data-live-estimate-delta="1" data-estimate="${esc(info.estimateText || "")}" data-completed="${esc(info.completedText || info.expiredText || "")}">${esc(delta)}</td>
               <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${info.badgeClass}">${esc(info.label)}</span></td>
             </tr>`;
               })
               .join("") ||
-            `<tr><td colspan="11" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data estimasi bongkar.</td></tr>`
+            `<tr><td colspan="12" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data estimasi bongkar.</td></tr>`
           }
         </tbody>
       </table>
@@ -4081,6 +4308,28 @@ function emptyBox(t) {
 
 let liveWaitingTimer = null;
 
+function refreshLiveEstimateCells() {
+  document.querySelectorAll('[data-live-estimate-delta="1"]').forEach((el) => {
+    const estimate = parseDateLocal(el.dataset.estimate || "");
+    if (!estimate) {
+      el.textContent = "-";
+      el.classList.remove("text-success", "text-error");
+      el.classList.add("text-on-surface-variant");
+      return;
+    }
+    const completed = parseDateLocal(el.dataset.completed || "");
+    const compare = completed || new Date();
+    const diff = Math.floor((estimate.getTime() - compare.getTime()) / 60000);
+    el.textContent =
+      diff >= 0
+        ? `Sisa ${formatMinutesCompact(diff)}`
+        : `Lewat ${formatMinutesCompact(Math.abs(diff))}`;
+    el.classList.toggle("text-success", diff >= 0);
+    el.classList.toggle("text-error", diff < 0);
+    el.classList.remove("text-on-surface-variant");
+  });
+}
+
 function refreshLiveWaitingCells() {
   document.querySelectorAll('[data-live-waiting="1"]').forEach((el) => {
     const st = String(el.dataset.status || "").toUpperCase();
@@ -4094,6 +4343,8 @@ function refreshLiveWaitingCells() {
   });
 
   if (typeof updateLiveSlaCells === "function") updateLiveSlaCells();
+  if (typeof refreshLiveEstimateCells === "function")
+    refreshLiveEstimateCells();
 }
 
 function startLiveWaitingTimer() {
