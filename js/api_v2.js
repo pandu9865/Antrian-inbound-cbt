@@ -269,6 +269,15 @@ function getOutputFormRows(response) {
   return [];
 }
 
+function hasOutputFormPayload(response) {
+  return (
+    Array.isArray(response?.outputForm) ||
+    Array.isArray(response?.output_form) ||
+    Array.isArray(response?.data?.outputForm) ||
+    Array.isArray(response?.data?.output_form)
+  );
+}
+
 function upsertOutputRowsToRawResponse(rows = []) {
   const incoming = Array.isArray(rows) ? rows : [];
   if (!incoming.length) return;
@@ -802,11 +811,18 @@ function buildDashboardFromV2(response) {
   v2PoIndex = buildPoIndex(tableRows);
 
   // Data V2 hanya dipakai untuk PO lookup/options.
-  // Queue/Checker wajib dari hasil input Security: Output form + local fallback.
+  // Queue/Checker wajib dari hasil input Security: Output form.
+  // LocalStorage hanya fallback saat payload Output form tidak ada sama sekali.
+  // Kalau Output form dari server kosong, queue juga wajib kosong agar data yang sudah dihapus
+  // dari GSheet tidak tetap muncul di Waiting List.
   const serverQueue = buildQueueFromOutputForm(outputRows);
-  const localQueue = getLocalTickets();
+  const serverHasOutputForm = hasOutputFormPayload(response);
+  const localQueue = serverHasOutputForm ? [] : getLocalTickets();
+  if (serverHasOutputForm) saveLocalTickets([]);
   const queue = normalizeQueueSequenceBySlot(
-    mergeTicketQueues(serverQueue, localQueue),
+    serverHasOutputForm
+      ? serverQueue
+      : mergeTicketQueues(serverQueue, localQueue),
   );
 
   const summary = buildSummary(kpiRaw, tableRows, queue);

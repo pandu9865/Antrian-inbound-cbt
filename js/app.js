@@ -2418,6 +2418,264 @@ function gateVisibilityPanel(rows = []) {
   </div>`;
 }
 
+function getFirstValue(row = {}, keys = []) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+  return "";
+}
+
+function minutesBetweenValues(startValue, endValue) {
+  const start = parseDateLocal(startValue);
+  const end = parseDateLocal(endValue);
+  if (!start || !end) return null;
+  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 60000));
+}
+
+function averageMinutes(values = []) {
+  const clean = values.filter((v) => typeof v === "number" && !isNaN(v));
+  if (!clean.length) return null;
+  return Math.round(clean.reduce((sum, v) => sum + v, 0) / clean.length);
+}
+
+function formatMinutesCompact(minutes) {
+  if (minutes === null || minutes === undefined || isNaN(minutes)) return "-";
+  const total = Math.max(0, Number(minutes || 0));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h && m) return `${h}j ${m}m`;
+  if (h) return `${h}j`;
+  return `${m}m`;
+}
+
+function splitPoForReport(value = "") {
+  return String(value || "")
+    .split(/[,;\n|]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function getMonitoringDetailStats(rows = []) {
+  const unique = (values) =>
+    new Set(values.map((x) => String(x || "").trim()).filter(Boolean)).size;
+
+  const statuses = rows.map((r) => String(r.status || "").toUpperCase());
+  const waiting = statuses.filter((s) => s.includes("WAIT")).length;
+  const called = statuses.filter((s) => s.includes("CALLED")).length;
+  const unloading = statuses.filter((s) => s.includes("UNLOADING")).length;
+  const completed = statuses.filter((s) => s.includes("COMPLETED")).length;
+  const expired = statuses.filter((s) => s.includes("EXPIRED")).length;
+  const active = rows.length - completed - expired;
+
+  const totalQty = rows.reduce(
+    (sum, r) => sum + cleanNumber(r.total_po_qty ?? r.actual_quantity ?? 0),
+    0,
+  );
+  const totalSku = rows.reduce(
+    (sum, r) => sum + cleanNumber(r.count_po_sku ?? r.sku ?? 0),
+    0,
+  );
+  const totalCall = rows.reduce(
+    (sum, r) => sum + cleanNumber(r.call_count ?? r.wa_call_count ?? 0),
+    0,
+  );
+
+  const waSent = rows.filter((r) =>
+    String(r.wa_call_status || "")
+      .toUpperCase()
+      .includes("SENT"),
+  ).length;
+  const waFailed = rows.filter((r) =>
+    String(r.wa_call_status || "")
+      .toUpperCase()
+      .includes("FAILED"),
+  ).length;
+  const waBlank = rows.filter(
+    (r) => !String(r.wa_call_status || "").trim(),
+  ).length;
+
+  const slaStatus = rows.map((r) => getInboundSlaInfo(r).status);
+  const slaOk = slaStatus.filter((s) => s === "SLA OK").length;
+  const slaMiss = slaStatus.filter((s) => s === "SLA MISS").length;
+  const slaProcess = slaStatus.filter((s) => s === "ON PROCESS").length;
+  const slaNo = slaStatus.filter((s) => s === "NO SLA").length;
+
+  const waitingMinutes = rows
+    .map((r) =>
+      minutesBetweenValues(
+        getFirstValue(r, ["register_time", "created_at"]),
+        getFirstValue(r, ["called_at"]),
+      ),
+    )
+    .filter((v) => v !== null);
+
+  const unloadingMinutes = rows
+    .map((r) =>
+      minutesBetweenValues(
+        getFirstValue(r, ["start_unloading_at"]),
+        getFirstValue(r, ["completed_at"]),
+      ),
+    )
+    .filter((v) => v !== null);
+
+  return {
+    total: rows.length,
+    active,
+    waiting,
+    called,
+    unloading,
+    completed,
+    expired,
+    totalQty,
+    totalSku,
+    totalCall,
+    vendorCount: unique(rows.map((r) => r.vendor_name)),
+    driverCount: unique(rows.map((r) => r.driver_name)),
+    plateCount: unique(rows.map((r) => r.plat_number)),
+    poCount: unique(rows.flatMap((r) => splitPoForReport(r.po_number))),
+    waSent,
+    waFailed,
+    waBlank,
+    slaOk,
+    slaMiss,
+    slaProcess,
+    slaNo,
+    slaMissRate: rows.length ? Math.round((slaMiss / rows.length) * 100) : 0,
+    avgWaiting: averageMinutes(waitingMinutes),
+    avgUnloading: averageMinutes(unloadingMinutes),
+  };
+}
+
+function monitoringDetailReport(rows = []) {
+  const d = getMonitoringDetailStats(rows);
+  return `<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-3"><span class="material-symbols-outlined text-primary">assignment_add</span><h4 class="font-bold text-on-surface">Report Input Security</h4></div>
+      <div class="grid grid-cols-2 gap-3">
+        ${miniMetric("Ticket Input", num(d.total), "text-primary")}
+        ${miniMetric("Aktif", num(d.active), "text-primary")}
+        ${miniMetric("Vendor", num(d.vendorCount), "text-tertiary")}
+        ${miniMetric("Driver", num(d.driverCount), "text-tertiary")}
+        ${miniMetric("Plat", num(d.plateCount), "text-primary")}
+        ${miniMetric("PO", num(d.poCount), "text-primary")}
+        ${miniMetric("Total Qty", num(d.totalQty), "text-success")}
+        ${miniMetric("Total SKU", num(d.totalSku), "text-success")}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-3"><span class="material-symbols-outlined text-warning">fact_check</span><h4 class="font-bold text-on-surface">Report Proses Checker</h4></div>
+      <div class="grid grid-cols-2 gap-3">
+        ${miniMetric("Waiting", num(d.waiting), "text-tertiary")}
+        ${miniMetric("Called", num(d.called), "text-primary")}
+        ${miniMetric("Unloading", num(d.unloading), "text-warning")}
+        ${miniMetric("Completed", num(d.completed), "text-success")}
+        ${miniMetric("Expired", num(d.expired), d.expired ? "text-error" : "text-success")}
+        ${miniMetric("Total Panggil", num(d.totalCall), "text-primary")}
+        ${miniMetric("Avg Tunggu", formatMinutesCompact(d.avgWaiting), "text-tertiary")}
+        ${miniMetric("Avg Bongkar", formatMinutesCompact(d.avgUnloading), "text-warning")}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-3"><span class="material-symbols-outlined text-success">analytics</span><h4 class="font-bold text-on-surface">Report SLA & WhatsApp</h4></div>
+      <div class="grid grid-cols-2 gap-3">
+        ${miniMetric("SLA OK", num(d.slaOk), "text-success")}
+        ${miniMetric("SLA Miss", num(d.slaMiss), d.slaMiss ? "text-error" : "text-success")}
+        ${miniMetric("On Process", num(d.slaProcess), "text-warning")}
+        ${miniMetric("Miss Rate", `${num(d.slaMissRate)}%`, d.slaMissRate ? "text-error" : "text-success")}
+        ${miniMetric("WA Sent", num(d.waSent), "text-success")}
+        ${miniMetric("WA Failed", num(d.waFailed), d.waFailed ? "text-error" : "text-success")}
+        ${miniMetric("WA Belum", num(d.waBlank), "text-on-surface-variant")}
+        ${miniMetric("No SLA", num(d.slaNo), "text-on-surface-variant")}
+      </div>
+    </div>
+  </div>`;
+}
+
+function monitorStatusBadge(status = "") {
+  const st = String(status || "-").toUpperCase();
+  const cls = st.includes("COMPLETED")
+    ? "bg-success/10 text-success border-success/30"
+    : st.includes("EXPIRED")
+      ? "bg-error/10 text-error border-error/30"
+      : st.includes("UNLOADING")
+        ? "bg-warning/10 text-warning border-warning/30"
+        : st.includes("CALLED")
+          ? "bg-primary/10 text-primary border-primary/30"
+          : "bg-surface-container text-on-surface-variant border-outline-variant";
+  return `<span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${cls}">${esc(st)}</span>`;
+}
+
+function monitorLifecycleTable(rows = []) {
+  const sorted = [...rows].sort((a, b) => {
+    const da =
+      parseDateLocal(getFirstValue(a, ["created_at", "register_time"])) ||
+      new Date(0);
+    const db =
+      parseDateLocal(getFirstValue(b, ["created_at", "register_time"])) ||
+      new Date(0);
+    return db.getTime() - da.getTime();
+  });
+
+  return `<div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30">
+      <div>
+        <h4 class="font-bold text-on-surface">Detail Timeline Input + Checker</h4>
+        <p class="text-xs text-on-surface-variant">Source: Output form. Kalau Output form kosong, tabel ini ikut kosong.</p>
+      </div>
+      <input class="form-input max-w-md" placeholder="Filter queue / plat / vendor / status..." oninput="filterTable('monitor-detail-table', this.value)" />
+    </div>
+    <div class="overflow-x-auto">
+      <table id="monitor-detail-table" class="w-full text-left text-sm">
+        <thead class="bg-surface-container text-on-surface-variant">
+          <tr>${["Queue", "Status", "Vendor", "Driver", "Plat", "PO", "Gate", "Register", "Called", "Start Bongkar", "Completed/Expired", "Tunggu", "Bongkar", "Call", "WA", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr>
+        </thead>
+        <tbody class="divide-y divide-outline-variant/10">
+          ${sorted.map((r) => monitorDetailRow(r)).join("") || `<tr><td colspan="16" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data dari Output form.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function monitorDetailRow(r = {}) {
+  const st = String(r.status || "").toUpperCase();
+  const sla = getInboundSlaInfo(r);
+  const reg = getFirstValue(r, ["register_time", "created_at"]);
+  const called = getFirstValue(r, ["called_at"]);
+  const start = getFirstValue(r, ["start_unloading_at"]);
+  const end = getFirstValue(r, ["completed_at", "expired_at"]);
+  const waitingMinutes = minutesBetweenValues(reg, called);
+  const unloadingMinutes = minutesBetweenValues(
+    start,
+    getFirstValue(r, ["completed_at"]),
+  );
+  const callCount = cleanNumber(r.call_count ?? r.wa_call_count ?? 0);
+  const wa = String(r.wa_call_status || "-").toUpperCase();
+  return `<tr class="hover:bg-primary/5 ${st.includes("EXPIRED") ? "bg-error/5" : sla.status === "SLA MISS" ? "bg-error/5" : ""}">
+    <td class="px-4 py-3 font-queue-id text-primary whitespace-nowrap">${esc(r.queue_no || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${monitorStatusBadge(st)}</td>
+    <td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td>
+    <td class="px-4 py-3 min-w-[120px]">${esc(r.driver_name || "-")}</td>
+    <td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(r.plat_number || "-")}</td>
+    <td class="px-4 py-3 min-w-[240px] break-all">${esc(r.po_number || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(r.gate || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(reg || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(called || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(start || "-")}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(end || "-")}</td>
+    <td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(formatMinutesCompact(waitingMinutes))}</td>
+    <td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(formatMinutesCompact(unloadingMinutes))}</td>
+    <td class="px-4 py-3 font-bold text-center">${esc(callCount)}</td>
+    <td class="px-4 py-3 whitespace-nowrap">${esc(wa)}</td>
+    <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${sla.badgeClass}">${esc(sla.status)}</span></td>
+  </tr>`;
+}
+
 function pageMonitor() {
   const allRows = state.dashboard?.queue || [];
   const rows = allRows.filter((r) => {
@@ -2431,7 +2689,7 @@ function pageMonitor() {
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h3 class="font-headline-md text-headline-md">Waiting List Monitoring</h3>
-          <p class="text-on-surface-variant">Report ini hanya dari hasil input Security dan update Checker. Tidak baca semua raw Data V2.</p>
+          <p class="text-on-surface-variant">Report detail dari hasil input Security dan update Checker. Source utama: <b>Output form</b>.</p>
         </div>
         <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh Output form</button>
       </div>
@@ -2447,20 +2705,30 @@ function pageMonitor() {
         ${miniMetric("SLA Miss", summary.miss, summary.miss ? "text-error" : "text-success")}
       </div>
 
+      ${monitoringDetailReport(allRows)}
+
       <div class="mb-6">${slaRowsLegend()}</div>
 
       ${gateVisibilityPanel(allRows)}
 
-      <div class="overflow-x-auto border border-outline-variant/30 rounded-lg">
-        <table id="monitor-table" class="w-full text-left">
-          <thead class="bg-surface-container text-on-surface-variant">
-            <tr>${["Plat", "Queue", "Vendor", "PO", "Fleet", "SKU", "Gate", "Status", "Menunggu", "SLA Target", "SLA Status"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
-          </thead>
-          <tbody class="divide-y divide-outline-variant/10">
-            ${rows.map((r) => monitorRow(r)).join("") || `<tr><td colspan="11" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list aktif dari Output form.</td></tr>`}
-          </tbody>
-        </table>
+      <div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
+        <div class="bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30">
+          <h4 class="font-bold text-on-surface">Waiting List Aktif</h4>
+          <p class="text-xs text-on-surface-variant">Hanya status WAITING / CALLED / UNLOADING.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table id="monitor-table" class="w-full text-left">
+            <thead class="bg-surface-container text-on-surface-variant">
+              <tr>${["Plat", "Queue", "Vendor", "PO", "Fleet", "SKU", "Gate", "Status", "Menunggu", "SLA Target", "SLA Status"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
+            </thead>
+            <tbody class="divide-y divide-outline-variant/10">
+              ${rows.map((r) => monitorRow(r)).join("") || `<tr><td colspan="11" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list aktif dari Output form.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      ${monitorLifecycleTable(allRows)}
     </div>
   </div>`;
 }
@@ -2479,7 +2747,7 @@ function monitorRow(r) {
     <td class="px-4 py-3 font-bold">${esc(r.fleet_type || "-")}</td>
     <td class="px-4 py-3 font-queue-id">${esc(r.count_po_sku || 0)}</td>
     <td class="px-4 py-3">${esc(r.gate || "-")}</td>
-    <td class="px-4 py-3">${esc(st || "-")}</td>
+    <td class="px-4 py-3">${monitorStatusBadge(st)}</td>
     <td class="px-4 py-3 font-queue-id ${danger ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
     <td class="px-4 py-3 font-bold">${esc(sla.label)}</td>
     <td class="px-4 py-3">
