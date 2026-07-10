@@ -114,9 +114,9 @@ const ROLE_ACCESS = {
     "setting",
     "debug",
   ],
-  ADMIN: ["checker", "panggil"],
+  ADMIN: ["checker", "panggil", "laporan"],
   CHECKER: ["checker"],
-  SECURITY: ["daftar"],
+  SECURITY: ["daftar", "laporan"],
 };
 
 const ROLE_DEFAULT_PAGE = {
