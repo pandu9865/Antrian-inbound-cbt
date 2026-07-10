@@ -1853,6 +1853,8 @@ function buildBackendActionBodyFromRow(row = {}) {
     po_number: row.po_number || "",
     vendor_name: row.vendor_name || "",
     fleet_type: row.fleet_type || "",
+    driver_name: row.driver_name || "",
+    phone_number: row.phone_number || "",
     gate: row.gate || "",
     status: row.status || "",
   };
@@ -1869,7 +1871,7 @@ function applyBackendActionResult(result = {}) {
 }
 
 async function sendDriverWhatsAppFromKey(encodedKey = "", btn = null) {
-  const row =
+  let row =
     typeof findCheckerRowByKey === "function"
       ? findCheckerRowByKey(encodedKey)
       : null;
@@ -1877,30 +1879,45 @@ async function sendDriverWhatsAppFromKey(encodedKey = "", btn = null) {
     showToast("Data ticket tidak ditemukan. Refresh dulu.");
     return;
   }
-
+  row = await refreshOutputFormForFreshRow(row);
+  const callCount = getDriverCallCountApi(row);
+  if (callCount >= 3) {
+    if (typeof showDriverNoShowSuggestionFromKey === "function")
+      showDriverNoShowSuggestionFromKey(checkerRowKey(row), btn);
+    else showToast("Limit panggilan 3x sudah tercapai.");
+    return;
+  }
   const phone = normalizePhoneInputValue(row.phone_number || "");
   if (!phone) {
     showToast("Nomor WhatsApp driver kosong / format tidak valid.");
     return;
   }
-
   if (btn) {
     btn.disabled = true;
     btn.classList.add("opacity-60", "cursor-wait");
   }
-
   try {
-    const result = await sendDriverWhatsAppToBackend(
-      buildBackendActionBodyFromRow(row),
-    );
-    applyBackendActionResult(result);
+    const result = await sendDriverWhatsAppToBackend({
+      ...buildBackendActionBodyFromRow(row),
+      phone_number: phone,
+    });
+    const fresh = getFreshRowAfterAction(result, row);
+    const newCount =
+      Number(result?.call_count || fresh.call_count || callCount + 1) || 0;
     showToast(
       "WhatsApp terkirim ke driver" +
-        (result?.call_count ? ` (${result.call_count}x)` : ""),
+        (newCount ? ` (${Math.min(newCount, 3)}/3)` : ""),
     );
-    if (["checker", "laporan", "monitor"].includes(state.page)) {
+    if (["checker", "laporan", "monitor"].includes(state.page))
       renderPage(state.page, false);
-    }
+    if (
+      newCount >= 3 &&
+      typeof showDriverNoShowSuggestionFromKey === "function"
+    )
+      setTimeout(
+        () => showDriverNoShowSuggestionFromKey(checkerRowKey(fresh || row)),
+        250,
+      );
   } catch (err) {
     console.error(err);
     showToast("WA gagal: " + err.message);
@@ -2052,6 +2069,28 @@ function getFreshRowAfterAction(result = {}, fallback = {}) {
   const rows = applyBackendActionResult(result);
   return rows[0] || fallback || {};
 }
+async function refreshOutputFormForFreshRow(fallback = {}) {
+  if (typeof fetchOutputFormData !== "function") return fallback || {};
+  try {
+    const outputResponse = await fetchOutputFormData();
+    v2RawResponse = {
+      ...(v2RawResponse || {}),
+      status: "success",
+      timestamp: outputResponse?.timestamp || new Date().toISOString(),
+      outputForm: getOutputFormRows(outputResponse),
+    };
+    state.dashboard = buildDashboardFromV2(v2RawResponse);
+    const key = checkerRowKey(fallback || {});
+    const fresh =
+      key && typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(key)
+        : null;
+    return fresh || fallback || {};
+  } catch (err) {
+    console.warn("refreshOutputFormForFreshRow failed", err);
+    return fallback || {};
+  }
+}
 
 async function recallDriverFromKey(encodedKey = "", btn = null) {
   const row =
@@ -2121,7 +2160,7 @@ async function recallDriverFromKey(encodedKey = "", btn = null) {
 }
 
 async function sendDriverWhatsAppFromKey(encodedKey = "", btn = null) {
-  const row =
+  let row =
     typeof findCheckerRowByKey === "function"
       ? findCheckerRowByKey(encodedKey)
       : null;
@@ -2129,53 +2168,45 @@ async function sendDriverWhatsAppFromKey(encodedKey = "", btn = null) {
     showToast("Data ticket tidak ditemukan. Refresh dulu.");
     return;
   }
-
+  row = await refreshOutputFormForFreshRow(row);
   const callCount = getDriverCallCountApi(row);
   if (callCount >= 3) {
-    if (typeof showDriverNoShowSuggestionFromKey === "function") {
-      showDriverNoShowSuggestionFromKey(encodedKey, btn);
-    } else {
-      showToast("Limit panggilan 3x sudah tercapai.");
-    }
+    if (typeof showDriverNoShowSuggestionFromKey === "function")
+      showDriverNoShowSuggestionFromKey(checkerRowKey(row), btn);
+    else showToast("Limit panggilan 3x sudah tercapai.");
     return;
   }
-
   const phone = normalizePhoneInputValue(row.phone_number || "");
   if (!phone) {
     showToast("Nomor WhatsApp driver kosong / format tidak valid.");
     return;
   }
-
   if (btn) {
     btn.disabled = true;
     btn.classList.add("opacity-60", "cursor-wait");
   }
-
   try {
-    const result = await sendDriverWhatsAppToBackend(
-      buildBackendActionBodyFromRow(row),
-    );
+    const result = await sendDriverWhatsAppToBackend({
+      ...buildBackendActionBodyFromRow(row),
+      phone_number: phone,
+    });
     const fresh = getFreshRowAfterAction(result, row);
     const newCount =
       Number(result?.call_count || fresh.call_count || callCount + 1) || 0;
-
     showToast(
       "WhatsApp terkirim ke driver" +
         (newCount ? ` (${Math.min(newCount, 3)}/3)` : ""),
     );
-    if (["checker", "laporan", "monitor"].includes(state.page)) {
+    if (["checker", "laporan", "monitor"].includes(state.page))
       renderPage(state.page, false);
-    }
-
     if (
       newCount >= 3 &&
       typeof showDriverNoShowSuggestionFromKey === "function"
-    ) {
+    )
       setTimeout(
         () => showDriverNoShowSuggestionFromKey(checkerRowKey(fresh || row)),
         250,
       );
-    }
   } catch (err) {
     console.error(err);
     showToast("WA gagal: " + err.message);

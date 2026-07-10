@@ -658,6 +658,12 @@ function getDriverTicketEffectiveRow() {
 }
 
 function driverWaitingLabel(row = {}) {
+  const st = String(row.status || "").toUpperCase();
+  if (st.includes("EXPIRED")) {
+    const start = row.register_time || row.created_at;
+    const end = row.expired_at || row.updated_at;
+    return formatMinutesCompact(minutesBetweenValues(start, end));
+  }
   if (row.completed_at) return "Selesai";
   return liveWaitingText(row.register_time || row.created_at, row.completed_at);
 }
@@ -699,29 +705,46 @@ async function refreshDriverTrackLiveData(silent = true) {
 function refreshDriverTrackDom() {
   if (!isDriverTrackMode()) return;
   const row = getDriverTicketEffectiveRow();
-  const running = getCurrentRunningTicket();
-  const finishAt = getEstimatedFinishedAt(running);
+  const statusText = String(row.status || "WAITING").toUpperCase();
+  const estimate = getUnloadingEstimateInfo(row);
+  const showBongkarEstimate =
+    statusText.includes("UNLOADING") ||
+    statusText.includes("COMPLETED") ||
+    !!row.start_unloading_at;
   const wait = document.getElementById("driver-track-waiting");
   const status = document.getElementById("driver-track-status");
   const gate = document.getElementById("driver-track-gate");
   const lastRefresh = document.getElementById("driver-track-last-refresh");
   const liveBadge = document.getElementById("driver-track-live-badge");
-  const runningQueue = document.getElementById("driver-track-running-queue");
-  const runningDetail = document.getElementById("driver-track-running-detail");
   const estFinish = document.getElementById("driver-track-est-finish");
-
+  const estNote = document.getElementById("driver-track-est-note");
+  const slaDelta = document.getElementById("driver-track-sla-delta");
   if (wait) wait.textContent = driverWaitingLabel(row);
-  if (status) status.textContent = row.status || "WAITING";
+  if (status) status.textContent = statusText || "WAITING";
   if (gate) gate.textContent = row.gate || "-";
   if (lastRefresh) lastRefresh.textContent = driverTrackLastRefreshAt || "-";
-  if (runningQueue) runningQueue.textContent = running?.queue_no || "-";
-  if (runningDetail) {
-    runningDetail.textContent = running
-      ? `${running.gate || "-"} · ${String(running.status || "-").toUpperCase()}`
-      : "Belum ada gate aktif";
+  if (estFinish)
+    estFinish.textContent = showBongkarEstimate
+      ? estimate.estimateText || "-"
+      : "-";
+  if (estNote)
+    estNote.textContent = showBongkarEstimate
+      ? estimate.estimateSource || "SLA Finished At / Start Bongkar + SLA Fleet"
+      : "Estimasi bongkar muncul setelah status UNLOADING.";
+  if (slaDelta) {
+    if (!showBongkarEstimate || estimate.diffMinutes === null) {
+      slaDelta.textContent = "-";
+      slaDelta.className = "font-queue-id text-xl text-on-surface-variant mt-2";
+    } else if (estimate.diffMinutes >= 0) {
+      slaDelta.textContent =
+        "Sisa " + formatMinutesCompact(estimate.diffMinutes);
+      slaDelta.className = "font-queue-id text-xl text-success mt-2";
+    } else {
+      slaDelta.textContent =
+        "Lewat " + formatMinutesCompact(Math.abs(estimate.diffMinutes));
+      slaDelta.className = "font-queue-id text-xl text-error mt-2";
+    }
   }
-  if (estFinish) estFinish.textContent = finishAt || "-";
-
   if (liveBadge) {
     const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
     liveBadge.textContent = found ? "LIVE DATA" : "PREVIEW / BELUM SYNC";
@@ -764,74 +787,46 @@ function pageDriverTrack() {
   const row = getDriverTicketEffectiveRow();
   const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
   const status = String(row.status || "WAITING").toUpperCase();
-  const running = getCurrentRunningTicket();
-  const finishAt = getEstimatedFinishedAt(running);
-
+  const estimate = getUnloadingEstimateInfo(row);
+  const showBongkarEstimate =
+    status.includes("UNLOADING") ||
+    status.includes("COMPLETED") ||
+    !!row.start_unloading_at;
+  const estimateText = showBongkarEstimate ? estimate.estimateText || "-" : "-";
+  const estimateNote = showBongkarEstimate
+    ? estimate.estimateSource || "SLA Finished At / Start Bongkar + SLA Fleet"
+    : "Estimasi bongkar muncul setelah status UNLOADING.";
+  const deltaText =
+    !showBongkarEstimate || estimate.diffMinutes === null
+      ? "-"
+      : estimate.diffMinutes >= 0
+        ? "Sisa " + formatMinutesCompact(estimate.diffMinutes)
+        : "Lewat " + formatMinutesCompact(Math.abs(estimate.diffMinutes));
+  const deltaClass =
+    !showBongkarEstimate || estimate.diffMinutes === null
+      ? "text-on-surface-variant"
+      : estimate.diffMinutes >= 0
+        ? "text-success"
+        : "text-error";
+  const expiredNote = status.includes("EXPIRED")
+    ? `<div class="mt-5 rounded-xl border border-error/30 bg-error/10 p-4 text-sm text-error font-bold">Tiket antrian dibatalkan / expired. Driver wajib membuat nomor antrian baru.</div>`
+    : "";
   return `<div class="min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
     <div class="glass-card rounded-2xl p-6 w-full max-w-[640px] border border-outline-variant/50">
       <div class="text-center mb-6">
         <div class="text-[12px] uppercase tracking-[0.35em] text-on-surface-variant font-extrabold">Inbound CBT</div>
         <h1 class="text-2xl font-extrabold text-on-surface mt-2">Status Antrian Driver</h1>
-        <div id="driver-track-live-badge" class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${
-          found
-            ? "bg-success/10 text-success border border-success/30"
-            : "bg-warning/10 text-warning border border-warning/30"
-        }">${found ? "LIVE DATA" : "PREVIEW / BELUM SYNC"}</div>
+        <div id="driver-track-live-badge" class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${found ? "bg-success/10 text-success border border-success/30" : "bg-warning/10 text-warning border border-warning/30"}">${found ? "LIVE DATA" : "PREVIEW / BELUM SYNC"}</div>
       </div>
-
-      <div class="text-center border-y border-outline-variant/40 py-6">
-        <div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian Anda</div>
-        <div class="font-queue-id text-[56px] sm:text-[76px] leading-none text-primary font-black mt-3">${esc(row.queue_no || "-")}</div>
-      </div>
-
-      <div class="mt-5 rounded-2xl border border-primary/30 bg-primary/10 p-4 shadow-sm">
-        <div class="text-[11px] uppercase tracking-[0.28em] text-on-surface-variant font-extrabold mb-3">Info Antrian Aktif Saat Ini</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="rounded-xl bg-surface-container/50 border border-primary/20 p-4">
-            <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Antrian Sedang Berjalan</div>
-            <div id="driver-track-running-queue" class="font-queue-id text-4xl text-primary mt-2">${esc(running?.queue_no || "-")}</div>
-            <div id="driver-track-running-detail" class="mt-1 text-xs font-bold text-on-surface-variant">${running ? `${esc(running.gate || "-")} · ${esc(String(running.status || "-").toUpperCase())}` : "Belum ada gate aktif"}</div>
-          </div>
-          <div class="rounded-xl bg-surface-container/50 border border-tertiary/20 p-4">
-            <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Estimasi Selesai</div>
-            <div id="driver-track-est-finish" class="font-queue-id text-3xl text-tertiary mt-2">${esc(finishAt || "-")}</div>
-            <div class="mt-1 text-xs font-bold text-on-surface-variant">Referensi: SLA Finished At</div>
-          </div>
-        </div>
-        <div class="mt-3 text-[11px] text-on-surface-variant">Driver bisa lihat nomor antrian yang sedang berjalan sekarang dan estimasi selesai dari <b>SLA Finished At</b>. Jika SLA Finished At kosong, sistem hitung dari waktu mulai unloading + target SLA fleet.</div>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
-        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
-          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Jam Menunggu</div>
-          <div id="driver-track-waiting" class="font-queue-id text-2xl text-tertiary mt-2">${esc(driverWaitingLabel(row))}</div>
-        </div>
-        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
-          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Status</div>
-          <div id="driver-track-status" class="font-bold text-xl mt-2">${esc(status)}</div>
-        </div>
-        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
-          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Gate</div>
-          <div id="driver-track-gate" class="font-bold text-xl mt-2">${esc(row.gate || "-")}</div>
-        </div>
-        <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4">
-          <div class="text-[10px] uppercase font-bold text-on-surface-variant">Plat</div>
-          <div class="font-queue-id text-xl mt-2">${esc(row.plat_number || "-")}</div>
-        </div>
-      </div>
-
-      <div class="mt-4 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-2">
-        <div><b class="text-xs uppercase text-on-surface-variant">Driver</b><div class="font-bold">${esc(row.driver_name || "-")}</div></div>
-        <div><b class="text-xs uppercase text-on-surface-variant">Vendor</b><div class="font-bold">${esc(row.vendor_name || "-")}</div></div>
-        <div><b class="text-xs uppercase text-on-surface-variant">PO</b><div class="font-bold break-all">${esc(row.po_number || "-")}</div></div>
-        <div><b class="text-xs uppercase text-on-surface-variant">Register</b><div class="font-bold">${esc(row.register_time || row.created_at || "-")}</div></div>
-        <div><b class="text-xs uppercase text-on-surface-variant">Auto Refresh</b><div class="font-bold">Setiap 1 menit</div></div>
-        <div><b class="text-xs uppercase text-on-surface-variant">Last Refresh</b><div id="driver-track-last-refresh" class="font-bold">${esc(driverTrackLastRefreshAt || "-")}</div></div>
-      </div>
-
-      <button onclick="refreshDriverTrackLiveData(false)" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2">
-        <span class="material-symbols-outlined">refresh</span>Refresh Status Sekarang
-      </button>
+      <div class="text-center border-y border-outline-variant/40 py-6"><div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian Anda</div><div class="font-queue-id text-[56px] sm:text-[76px] leading-none text-primary font-black mt-3">${esc(row.queue_no || "-")}</div></div>
+      <div class="mt-5 rounded-2xl border border-primary/30 bg-primary/10 p-4 shadow-sm"><div class="text-[11px] uppercase tracking-[0.28em] text-on-surface-variant font-extrabold mb-3">Informasi Tiket Anda</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-xl bg-surface-container/50 border border-primary/20 p-4"><div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Status Anda</div><div id="driver-track-status" class="font-bold text-2xl mt-2">${esc(status)}</div><div class="mt-1 text-xs font-bold text-on-surface-variant">Gate: <span id="driver-track-gate">${esc(row.gate || "-")}</span></div></div>
+        <div class="rounded-xl bg-surface-container/50 border border-tertiary/20 p-4"><div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Estimasi Selesai Bongkar</div><div id="driver-track-est-finish" class="font-queue-id text-2xl text-tertiary mt-2">${esc(estimateText)}</div><div id="driver-track-est-note" class="mt-1 text-xs font-bold text-on-surface-variant">${esc(estimateNote)}</div></div>
+        <div class="rounded-xl bg-surface-container/50 border border-outline-variant/30 p-4 sm:col-span-2"><div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Sisa / Lewat SLA Bongkar</div><div id="driver-track-sla-delta" class="font-queue-id text-xl ${deltaClass} mt-2">${esc(deltaText)}</div></div>
+      </div><div class="mt-3 text-[11px] text-on-surface-variant">Halaman ini hanya menampilkan informasi ticket driver ini. Estimasi selesai bongkar baru muncul saat status <b>UNLOADING</b>.</div></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6"><div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Jam Menunggu</div><div id="driver-track-waiting" class="font-queue-id text-2xl text-tertiary mt-2">${esc(driverWaitingLabel(row))}</div></div><div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Plat</div><div class="font-queue-id text-xl mt-2">${esc(row.plat_number || "-")}</div></div></div>
+      <div class="mt-4 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-2"><div><b class="text-xs uppercase text-on-surface-variant">Driver</b><div class="font-bold">${esc(row.driver_name || "-")}</div></div><div><b class="text-xs uppercase text-on-surface-variant">Vendor</b><div class="font-bold">${esc(row.vendor_name || "-")}</div></div><div><b class="text-xs uppercase text-on-surface-variant">PO</b><div class="font-bold break-all">${esc(row.po_number || "-")}</div></div><div><b class="text-xs uppercase text-on-surface-variant">Register</b><div class="font-bold">${esc(row.register_time || row.created_at || "-")}</div></div><div><b class="text-xs uppercase text-on-surface-variant">Auto Refresh</b><div class="font-bold">Setiap 1 menit</div></div><div><b class="text-xs uppercase text-on-surface-variant">Last Refresh</b><div id="driver-track-last-refresh" class="font-bold">${esc(driverTrackLastRefreshAt || "-")}</div></div></div>
+      ${expiredNote}<button onclick="refreshDriverTrackLiveData(false)" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh Status Sekarang</button>
     </div>
   </div>`;
 }
@@ -2203,6 +2198,8 @@ function getMonitorStartTime(row = {}) {
 }
 
 function getElapsedMinutesForSla(row = {}) {
+  const st = String(row.status || "").toUpperCase();
+  if (st.includes("EXPIRED")) return 0;
   const start = parseDateLocal(getMonitorStartTime(row));
   if (!start) return 0;
   const end = row.completed_at
@@ -2214,8 +2211,20 @@ function getElapsedMinutesForSla(row = {}) {
 function getInboundSlaInfo(row = {}) {
   const hours = getInboundSlaHours(row);
   const st = String(row.status || "").toUpperCase();
+  const expired = st.includes("EXPIRED") || !!row.expired_at;
   const elapsed = getElapsedMinutesForSla(row);
 
+  if (expired) {
+    return {
+      target_hours: hours || 0,
+      target_minutes: hours ? hours * 60 : 0,
+      label: hours ? getInboundSlaLabel(row) : "-",
+      status: "EXPIRED",
+      className: "text-error",
+      badgeClass: "bg-error/10 text-error border-error/30",
+      elapsed_minutes: elapsed,
+    };
+  }
   if (!hours) {
     return {
       target_hours: 0,
@@ -2228,11 +2237,9 @@ function getInboundSlaInfo(row = {}) {
       elapsed_minutes: elapsed,
     };
   }
-
   const targetMinutes = hours * 60;
   const miss = elapsed > targetMinutes;
   const completed = st.includes("COMPLETED") || !!row.completed_at;
-
   if (completed) {
     return {
       target_hours: hours,
@@ -2246,7 +2253,6 @@ function getInboundSlaInfo(row = {}) {
       elapsed_minutes: elapsed,
     };
   }
-
   return {
     target_hours: hours,
     target_minutes: targetMinutes,
@@ -2657,7 +2663,6 @@ function getUnloadingEstimateInfo(row = {}) {
   const status = String(row.status || "").toUpperCase();
   const targetHours = getInboundSlaHours(row);
   const targetMinutes = targetHours ? targetHours * 60 : 0;
-
   const registerText = getFirstValue(row, [
     "register_time",
     "created_at",
@@ -2671,24 +2676,14 @@ function getUnloadingEstimateInfo(row = {}) {
     "sla_finished_at",
     "SLA Finished At",
   ]);
-
-  const registerDate = parseDateLocal(registerText);
-  const calledDate = parseDateLocal(calledText);
   const startDate = parseDateLocal(startText);
   const completedDate = parseDateLocal(completedText);
   const expiredDate = parseDateLocal(expiredText);
   const directDate = parseDateLocal(directFinish);
-
-  // Estimasi selesai bongkar hanya valid kalau proses bongkar sudah mulai.
-  // WAITING/CALLED belum punya estimasi selesai bongkar karena belum ada Start Bongkar.
-  // Prioritas saat sudah bongkar:
-  // 1. SLA Finished At dari backend/sheet.
-  // 2. Start Bongkar + SLA fleet.
-  const hasStartedBongkar = !!(
-    startDate ||
-    status.includes("UNLOADING") ||
-    status.includes("COMPLETED")
-  );
+  const isExpired = status.includes("EXPIRED") || !!expiredText;
+  const isCompleted = status.includes("COMPLETED") || !!completedText;
+  const isUnloading = status.includes("UNLOADING") || !!startText;
+  const hasStartedBongkar = !!(startDate || isUnloading || isCompleted);
   const baseDate = hasStartedBongkar ? startDate : null;
   const baseText = hasStartedBongkar ? startText || "" : "";
   const estimateSource = hasStartedBongkar
@@ -2698,22 +2693,20 @@ function getUnloadingEstimateInfo(row = {}) {
         ? "Start Bongkar + SLA Fleet"
         : ""
     : "Belum mulai bongkar";
-
   let estimateDate = null;
   if (hasStartedBongkar) {
     estimateDate = directDate || null;
-    if (!estimateDate && baseDate && targetHours) {
+    if (!estimateDate && baseDate && targetHours)
       estimateDate = new Date(
         baseDate.getTime() + targetHours * 60 * 60 * 1000,
       );
-    }
   }
-
   const estimateText = estimateDate ? formatDateTimeLocal(estimateDate) : "";
   const now = new Date();
-  const compareDate = completedDate || expiredDate || now;
+  const compareDate = completedDate || (isExpired ? expiredDate : null) || now;
   const hasEstimate = !!estimateDate;
   const outSla = !!(
+    !isExpired &&
     hasStartedBongkar &&
     hasEstimate &&
     compareDate.getTime() > estimateDate.getTime()
@@ -2721,18 +2714,18 @@ function getUnloadingEstimateInfo(row = {}) {
   const diffMinutes = hasEstimate
     ? Math.floor((estimateDate.getTime() - compareDate.getTime()) / 60000)
     : null;
-
   const runningStartText = startText || calledText || registerText || "";
   const runningEndText = completedText || expiredText || "";
   const runningMinutes = minutesBetweenValues(
     runningStartText,
     runningEndText || formatDateTimeLocal(now),
   );
-
   let label = "BELUM START";
   let badgeClass = "bg-warning/10 text-warning border-warning/30";
-
-  if (!targetHours) {
+  if (isExpired) {
+    label = "EXPIRED";
+    badgeClass = "bg-error/10 text-error border-error/30";
+  } else if (!targetHours) {
     label = "NO SLA";
     badgeClass =
       "bg-surface-container text-on-surface-variant border-outline-variant";
@@ -2746,14 +2739,13 @@ function getUnloadingEstimateInfo(row = {}) {
   } else if (outSla) {
     label = status.includes("UNLOADING") ? "OUT SLA BONGKAR" : "OUT SLA";
     badgeClass = "bg-error/10 text-error border-error/30";
-  } else if (status.includes("COMPLETED")) {
+  } else if (isCompleted) {
     label = "SLA OK";
     badgeClass = "bg-success/10 text-success border-success/30";
   } else if (status.includes("UNLOADING")) {
     label = "ON TRACK";
     badgeClass = "bg-success/10 text-success border-success/30";
   }
-
   return {
     targetHours,
     targetMinutes,
@@ -2763,6 +2755,7 @@ function getUnloadingEstimateInfo(row = {}) {
     startText,
     completedText,
     expiredText,
+    isExpired,
     hasStartedBongkar,
     baseText,
     estimateSource,
@@ -3130,36 +3123,96 @@ function monitorStatusBadge(status = "") {
   return `<span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${cls}">${esc(st)}</span>`;
 }
 
-function monitorLifecycleTable(rows = []) {
+function getMonitorWaitingStopValue(row = {}) {
+  const st = String(row.status || "").toUpperCase();
+  if (st.includes("EXPIRED"))
+    return getFirstValue(row, ["expired_at", "updated_at"]);
+  if (st.includes("COMPLETED"))
+    return getFirstValue(row, ["called_at", "completed_at", "updated_at"]);
+  if (st.includes("UNLOADING")) return getFirstValue(row, ["called_at"]);
+  return "";
+}
+function getMonitorWaitingRuntimeText(row = {}) {
+  const start = getFirstValue(row, [
+    "register_time",
+    "created_at",
+    "Timestamp",
+  ]);
+  const end = getMonitorWaitingStopValue(row);
+  if (!start) return "-";
+  if (end) return formatMinutesCompact(minutesBetweenValues(start, end));
+  return liveWaitingText(start, "");
+}
+function getMonitorUnloadingRuntimeText(row = {}) {
+  const st = String(row.status || "").toUpperCase();
+  const start = getFirstValue(row, ["start_unloading_at"]);
+  if (!start) return "-";
+  const end = st.includes("EXPIRED")
+    ? getFirstValue(row, ["expired_at", "updated_at"])
+    : getFirstValue(row, ["completed_at"]);
+  if (end) return formatMinutesCompact(minutesBetweenValues(start, end));
+  return liveWaitingText(start, "");
+}
+function monitorUnifiedDetailTable(rows = []) {
   const sorted = [...rows].sort((a, b) => {
-    const da =
-      parseDateLocal(getFirstValue(a, ["created_at", "register_time"])) ||
-      new Date(0);
-    const db =
-      parseDateLocal(getFirstValue(b, ["created_at", "register_time"])) ||
-      new Date(0);
-    return db.getTime() - da.getTime();
+    const terminalOrder = (r) => {
+      const st = String(r.status || "").toUpperCase();
+      if (st.includes("UNLOADING")) return 0;
+      if (st.includes("CALLED")) return 1;
+      if (st.includes("WAIT")) return 2;
+      if (st.includes("EXPIRED")) return 3;
+      if (st.includes("COMPLETED")) return 4;
+      return 5;
+    };
+    return (
+      terminalOrder(a) - terminalOrder(b) ||
+      queueNoOrderValue(a) - queueNoOrderValue(b)
+    );
   });
-
-  return `<div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30">
-      <div>
-        <h4 class="font-bold text-on-surface">Detail Timeline Input + Checker</h4>
-        <p class="text-xs text-on-surface-variant">Source: Output form. Kalau Output form kosong, tabel ini ikut kosong.</p>
-      </div>
-      <input class="form-input max-w-md" placeholder="Filter queue / plat / vendor / status..." oninput="filterTable('monitor-detail-table', this.value)" />
-    </div>
-    <div class="overflow-x-auto">
-      <table id="monitor-detail-table" class="w-full text-left text-sm">
-        <thead class="bg-surface-container text-on-surface-variant">
-          <tr>${["Queue", "Status", "Vendor", "Driver", "Plat", "PO", "Gate", "Register", "Called", "Start Bongkar", "Completed/Expired", "Tunggu", "Bongkar", "Call", "WA", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr>
-        </thead>
-        <tbody class="divide-y divide-outline-variant/10">
-          ${sorted.map((r) => monitorDetailRow(r)).join("") || `<tr><td colspan="16" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data dari Output form.</td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  </div>`;
+  return `<div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30"><div><h4 class="font-bold text-on-surface">Detail Waiting, Checker, dan SLA Bongkar</h4><p class="text-xs text-on-surface-variant">Satu table dari Output form. WAITING/CALLED tidak dibuat estimasi bongkar. UNLOADING menampilkan estimasi selesai dan sisa/lewat SLA. EXPIRED tidak dihitung miss SLA dan waktunya berhenti di expired_at.</p></div><input class="form-input max-w-md" placeholder="Filter queue / plat / vendor / status..." oninput="filterTable('monitor-unified-table', this.value)" /></div><div class="overflow-x-auto"><table id="monitor-unified-table" class="w-full text-left text-sm"><thead class="bg-surface-container text-on-surface-variant"><tr>${["Queue", "Status", "Vendor", "Driver", "Plat", "PO", "Fleet", "Gate", "Register", "Called", "Start Bongkar", "Selesai/Expired", "Jam Tunggu", "Jam Bongkar", "SLA Fleet", "Estimasi Selesai Bongkar", "Sisa/Lewat SLA", "Status SLA Bongkar", "Call", "WA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr></thead><tbody class="divide-y divide-outline-variant/10">${sorted.map((r) => monitorUnifiedDetailRow(r)).join("") || `<tr><td colspan="20" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data dari Output form.</td></tr>`}</tbody></table></div></div>`;
+}
+function monitorUnifiedDetailRow(r = {}) {
+  const st = String(r.status || "").toUpperCase();
+  const isExpired = st.includes("EXPIRED");
+  const isCompleted = st.includes("COMPLETED");
+  const isUnloading = st.includes("UNLOADING");
+  const info = getUnloadingEstimateInfo(r);
+  const reg = getFirstValue(r, ["register_time", "created_at", "Timestamp"]);
+  const called = getFirstValue(r, ["called_at"]);
+  const start = getFirstValue(r, ["start_unloading_at"]);
+  const end = isExpired
+    ? getFirstValue(r, ["expired_at", "updated_at"])
+    : getFirstValue(r, ["completed_at"]);
+  const showEstimate = isUnloading || isCompleted || !!start;
+  const deltaText =
+    !showEstimate || info.diffMinutes === null
+      ? "-"
+      : info.diffMinutes >= 0
+        ? "Sisa " + formatMinutesCompact(info.diffMinutes)
+        : "Lewat " + formatMinutesCompact(Math.abs(info.diffMinutes));
+  const deltaClass =
+    !showEstimate || info.diffMinutes === null
+      ? "text-on-surface-variant"
+      : info.diffMinutes >= 0
+        ? "text-success"
+        : "text-error";
+  const waitingEnd = getMonitorWaitingStopValue(r);
+  const waitingText = getMonitorWaitingRuntimeText(r);
+  const unloadingText = getMonitorUnloadingRuntimeText(r);
+  const callCount = cleanNumber(r.call_count ?? r.wa_call_count ?? 0);
+  const wa = String(r.wa_call_status || "-").toUpperCase();
+  const rowClass = isExpired ? "bg-error/5" : info.outSla ? "bg-error/5" : "";
+  const slaLabel = isExpired
+    ? "EXPIRED / GAGAL PANGGIL"
+    : showEstimate
+      ? info.label
+      : "BELUM START";
+  const slaClass = isExpired
+    ? "bg-error/10 text-error border-error/30"
+    : showEstimate
+      ? info.badgeClass
+      : "bg-warning/10 text-warning border-warning/30";
+  return `<tr class="hover:bg-primary/5 ${rowClass}"><td class="px-4 py-3 font-queue-id text-primary whitespace-nowrap">${esc(r.queue_no || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${monitorStatusBadge(st || "-")}</td><td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td><td class="px-4 py-3 min-w-[120px]">${esc(r.driver_name || "-")}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(r.plat_number || "-")}</td><td class="px-4 py-3 min-w-[240px] break-all">${esc(r.po_number || "-")}</td><td class="px-4 py-3 whitespace-nowrap font-bold">${esc(r.fleet_type || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(r.gate || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(reg || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(called || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(start || "-")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(end || "-")}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap ${isExpired ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(reg || "")}" data-completed="${esc(waitingEnd || "")}" data-status="${esc(st)}">${esc(isExpired ? formatMinutesCompact(minutesBetweenValues(reg, waitingEnd)) : waitingText)}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap ${info.outSla ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(start || "")}" data-completed="${esc(end || "")}" data-status="${esc(st)}">${esc(unloadingText)}</td><td class="px-4 py-3 whitespace-nowrap font-bold">${esc(info.targetLabel || "-")}</td><td class="px-4 py-3 whitespace-nowrap font-queue-id text-primary">${esc(showEstimate ? info.estimateText || "-" : "-")}</td><td class="px-4 py-3 whitespace-nowrap font-queue-id ${deltaClass}" data-live-estimate-delta="1" data-estimate="${esc(showEstimate ? info.estimateText || "" : "")}" data-completed="${esc(end || "")}">${esc(deltaText)}</td><td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${slaClass}">${esc(slaLabel)}</span></td><td class="px-4 py-3 font-bold text-center">${esc(callCount)}</td><td class="px-4 py-3 whitespace-nowrap">${esc(wa)}</td></tr>`;
 }
 
 function monitorDetailRow(r = {}) {
@@ -3198,63 +3251,8 @@ function monitorDetailRow(r = {}) {
 
 function pageMonitor() {
   const allRows = state.dashboard?.queue || [];
-  const rows = allRows.filter((r) => {
-    const st = String(r.status || "").toUpperCase();
-    return !st.includes("COMPLETED") && !st.includes("EXPIRED");
-  });
   const summary = getMonitorSummary(allRows);
-
-  return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
-    <div class="xl:col-span-12 glass-card rounded-xl p-6">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <h3 class="font-headline-md text-headline-md">Waiting List Monitoring</h3>
-          <p class="text-on-surface-variant">Report detail dari hasil input Security dan update Checker. Source utama: <b>Output form</b>.</p>
-        </div>
-        <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh Output form</button>
-      </div>
-
-      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
-        ${miniMetric("Total Input", summary.total, "text-primary")}
-        ${miniMetric("Aktif", summary.active, "text-primary")}
-        ${miniMetric("Waiting", summary.waiting, "text-tertiary")}
-        ${miniMetric("Called", summary.called, "text-primary")}
-        ${miniMetric("Unloading", summary.unloading, "text-warning")}
-        ${miniMetric("Completed", summary.completed, "text-success")}
-        ${miniMetric("Expired", summary.expired || 0, summary.expired ? "text-error" : "text-success")}
-        ${miniMetric("SLA Miss", summary.miss, summary.miss ? "text-error" : "text-success")}
-      </div>
-
-      ${monitoringDetailReport(allRows)}
-
-      ${monitorChartReport(allRows)}
-
-      ${unloadingEstimateReport(allRows)}
-
-      <div class="mb-6">${slaRowsLegend()}</div>
-
-      ${gateVisibilityPanel(allRows)}
-
-      <div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
-        <div class="bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30">
-          <h4 class="font-bold text-on-surface">Waiting List Aktif</h4>
-          <p class="text-xs text-on-surface-variant">Hanya status WAITING / CALLED / UNLOADING.</p>
-        </div>
-        <div class="overflow-x-auto">
-          <table id="monitor-table" class="w-full text-left">
-            <thead class="bg-surface-container text-on-surface-variant">
-              <tr>${["Plat", "Queue", "Vendor", "PO", "Fleet", "SKU", "Gate", "Status", "Menunggu", "SLA Target", "SLA Status"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
-            </thead>
-            <tbody class="divide-y divide-outline-variant/10">
-              ${rows.map((r) => monitorRow(r)).join("") || `<tr><td colspan="11" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list aktif dari Output form.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      ${monitorLifecycleTable(allRows)}
-    </div>
-  </div>`;
+  return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter"><div class="xl:col-span-12 glass-card rounded-xl p-6"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6"><div><h3 class="font-headline-md text-headline-md">Waiting List Monitoring</h3><p class="text-on-surface-variant">Report detail dari hasil input Security dan update Checker. Source utama: <b>Output form</b>.</p></div><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh Output form</button></div><div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">${miniMetric("Total Input", summary.total, "text-primary")}${miniMetric("Aktif", summary.active, "text-primary")}${miniMetric("Waiting", summary.waiting, "text-tertiary")}${miniMetric("Called", summary.called, "text-primary")}${miniMetric("Unloading", summary.unloading, "text-warning")}${miniMetric("Completed", summary.completed, "text-success")}${miniMetric("Expired", summary.expired || 0, summary.expired ? "text-error" : "text-success")}${miniMetric("SLA Miss", summary.miss, summary.miss ? "text-error" : "text-success")}</div>${gateVisibilityPanel(allRows)}${monitorUnifiedDetailTable(allRows)}<div class="mb-2">${slaRowsLegend()}</div></div></div>`;
 }
 
 function monitorRow(r) {
@@ -4347,13 +4345,37 @@ function refreshLiveEstimateCells() {
 function refreshLiveWaitingCells() {
   document.querySelectorAll('[data-live-waiting="1"]').forEach((el) => {
     const st = String(el.dataset.status || "").toUpperCase();
-    if (st.includes("COMPLETED") || el.dataset.completed) {
-      el.textContent = "Selesai";
-      el.classList.remove("text-tertiary", "text-warning", "text-error");
-      el.classList.add("text-success");
+    const created = el.dataset.created || "";
+    const completed = el.dataset.completed || "";
+
+    if (!created) {
+      el.textContent = "-";
+      el.classList.remove(
+        "text-tertiary",
+        "text-warning",
+        "text-error",
+        "text-success",
+      );
+      el.classList.add("text-on-surface-variant");
       return;
     }
-    el.textContent = liveWaitingText(el.dataset.created, el.dataset.completed);
+
+    if (completed) {
+      el.textContent = formatMinutesCompact(
+        minutesBetweenValues(created, completed),
+      );
+      el.classList.remove(
+        "text-tertiary",
+        "text-warning",
+        "text-success",
+        "text-on-surface-variant",
+      );
+      el.classList.toggle("text-error", st.includes("EXPIRED"));
+      el.classList.toggle("text-success", !st.includes("EXPIRED"));
+      return;
+    }
+
+    el.textContent = liveWaitingText(created, "");
   });
 
   if (typeof updateLiveSlaCells === "function") updateLiveSlaCells();
