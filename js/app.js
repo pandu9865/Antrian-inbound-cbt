@@ -1648,8 +1648,31 @@ function getNextWaitingTickets(
         !st.includes("EXPIRED")
       );
     })
-    .sort((a, b) => queueCreatedValue(a) - queueCreatedValue(b))
+    .sort(
+      (a, b) =>
+        queueNoOrderValue(a) - queueNoOrderValue(b) ||
+        queueCreatedValue(a) - queueCreatedValue(b),
+    )
     .slice(0, 8);
+}
+
+function queueNoOrderValue(row = {}) {
+  const queue = String(row.queue_no || row.original_queue_no || "")
+    .trim()
+    .toUpperCase();
+
+  // REG 1-2 / REG 7-1 -> sort by slot dulu, lalu sequence.
+  // Ini bikin Queue Berikutnya tampil urut nomor antrian, bukan urut waktu tunggu.
+  const reg = queue.match(/REG\s*(\d+)\s*-\s*(\d+)/i);
+  if (reg) return Number(reg[1]) * 100000 + Number(reg[2]);
+
+  const generic = queue.match(/(\d+)\s*-\s*(\d+)/);
+  if (generic) return Number(generic[1]) * 100000 + Number(generic[2]);
+
+  const single = queue.match(/(\d+)/);
+  if (single) return Number(single[1]);
+
+  return 999999999;
 }
 
 function queueWaitingStartValue(row = {}) {
@@ -2596,6 +2619,262 @@ function monitoringDetailReport(rows = []) {
   </div>`;
 }
 
+function percentOf(value, total) {
+  const v = Number(value || 0);
+  const t = Number(total || 0);
+  if (!t) return 0;
+  return Math.round((v / t) * 100);
+}
+
+function chartBar(label, value, total, colorClass = "bg-primary", note = "") {
+  const pct = percentOf(value, total);
+  return `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/45 p-3">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <div class="font-bold text-sm text-on-surface">${esc(label)}</div>
+      <div class="font-queue-id text-lg text-primary">${num(value)}</div>
+    </div>
+    <div class="h-3 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant/30">
+      <div class="h-full rounded-full ${colorClass}" style="width:${pct}%"></div>
+    </div>
+    <div class="mt-2 flex items-center justify-between text-[11px] text-on-surface-variant">
+      <span>${num(pct)}%</span>
+      <span>${esc(note || `dari ${num(total)}`)}</span>
+    </div>
+  </div>`;
+}
+
+function groupRowsByValue(rows = [], getter) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const key = String(getter(row) || "-").trim() || "-";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  });
+  return [...map.entries()].map(([key, items]) => ({ key, items }));
+}
+
+function getUnloadingEstimateInfo(row = {}) {
+  const status = String(row.status || "").toUpperCase();
+  const targetHours = getInboundSlaHours(row);
+  const targetMinutes = targetHours ? targetHours * 60 : 0;
+  const startText = getFirstValue(row, ["start_unloading_at"]);
+  const completedText = getFirstValue(row, ["completed_at"]);
+  const directFinish = getFirstValue(row, [
+    "sla_finished_at",
+    "SLA Finished At",
+  ]);
+  const startDate = parseDateLocal(startText);
+  const completedDate = parseDateLocal(completedText);
+  const directDate = parseDateLocal(directFinish);
+
+  let estimateDate = directDate;
+  if (!estimateDate && startDate && targetHours) {
+    estimateDate = new Date(startDate.getTime() + targetHours * 60 * 60 * 1000);
+  }
+
+  const estimateText = estimateDate
+    ? formatDateTimeLocal(estimateDate)
+    : directFinish || "";
+  const now = new Date();
+  const compareDate = completedDate || now;
+  const outSla = !!(
+    estimateDate && compareDate.getTime() > estimateDate.getTime()
+  );
+  const diffMinutes = estimateDate
+    ? Math.floor((estimateDate.getTime() - compareDate.getTime()) / 60000)
+    : null;
+
+  let label = "BELUM BONGKAR";
+  let badgeClass =
+    "bg-surface-container text-on-surface-variant border-outline-variant";
+
+  if (!targetHours) {
+    label = "NO SLA";
+  } else if (!startDate && !estimateDate) {
+    label =
+      status.includes("WAIT") || status.includes("CALLED")
+        ? "BELUM START"
+        : "NO ESTIMATE";
+  } else if (outSla) {
+    label = "OUT SLA";
+    badgeClass = "bg-error/10 text-error border-error/30";
+  } else if (status.includes("COMPLETED")) {
+    label = "SLA OK";
+    badgeClass = "bg-success/10 text-success border-success/30";
+  } else {
+    label = "ON TRACK";
+    badgeClass = "bg-success/10 text-success border-success/30";
+  }
+
+  return {
+    targetHours,
+    targetMinutes,
+    startText,
+    completedText,
+    estimateText,
+    outSla,
+    diffMinutes,
+    label,
+    badgeClass,
+  };
+}
+
+function monitorChartReport(rows = []) {
+  const d = getMonitoringDetailStats(rows);
+  const total = Math.max(1, d.total);
+  const fleetGroups = groupRowsByValue(rows, (r) => r.fleet_type || "UNKNOWN")
+    .sort((a, b) => b.items.length - a.items.length)
+    .slice(0, 8);
+  const outSlaRows = rows.filter((r) => getUnloadingEstimateInfo(r).outSla);
+  const noEstimateRows = rows.filter((r) => {
+    const info = getUnloadingEstimateInfo(r);
+    const st = String(r.status || "").toUpperCase();
+    return (
+      !st.includes("COMPLETED") && !st.includes("EXPIRED") && !info.estimateText
+    );
+  });
+
+  return `<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-primary">bar_chart</span><h4 class="font-bold text-on-surface">Chart Status Checker</h4></div>
+      <div class="space-y-3">
+        ${chartBar("WAITING", d.waiting, total, "bg-tertiary", `${num(d.waiting)} ticket`)}
+        ${chartBar("CALLED", d.called, total, "bg-primary", `${num(d.called)} ticket`)}
+        ${chartBar("UNLOADING", d.unloading, total, "bg-warning", `${num(d.unloading)} ticket`)}
+        ${chartBar("COMPLETED", d.completed, total, "bg-success", `${num(d.completed)} ticket`)}
+        ${chartBar("EXPIRED", d.expired, total, "bg-error", `${num(d.expired)} ticket`)}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-error">speed</span><h4 class="font-bold text-on-surface">Chart SLA Bongkar</h4></div>
+      <div class="space-y-3">
+        ${chartBar("SLA OK", d.slaOk, total, "bg-success", `${num(d.slaOk)} ticket`)}
+        ${chartBar("SLA MISS", d.slaMiss, total, "bg-error", `${num(d.slaMiss)} ticket`)}
+        ${chartBar("ON PROCESS", d.slaProcess, total, "bg-warning", `${num(d.slaProcess)} ticket`)}
+        ${chartBar("OUT SLA BONGKAR", outSlaRows.length, total, "bg-error", `${num(outSlaRows.length)} mobil`)}
+        ${chartBar("NO ESTIMATE", noEstimateRows.length, total, "bg-outline", `${num(noEstimateRows.length)} mobil`)}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex items-center gap-2 mb-4"><span class="material-symbols-outlined text-tertiary">local_shipping</span><h4 class="font-bold text-on-surface">Chart Fleet / Armada</h4></div>
+      <div class="space-y-3">
+        ${
+          fleetGroups
+            .map((g) => {
+              const qty = g.items.reduce(
+                (sum, r) =>
+                  sum + cleanNumber(r.total_po_qty ?? r.actual_quantity ?? 0),
+                0,
+              );
+              const sku = g.items.reduce(
+                (sum, r) => sum + cleanNumber(r.count_po_sku ?? r.sku ?? 0),
+                0,
+              );
+              const miss = g.items.filter(
+                (r) =>
+                  getUnloadingEstimateInfo(r).outSla ||
+                  getInboundSlaInfo(r).status === "SLA MISS",
+              ).length;
+              return chartBar(
+                g.key,
+                g.items.length,
+                total,
+                miss ? "bg-error" : "bg-primary",
+                `${num(g.items.length)} ticket · Qty ${num(qty)} · SKU ${num(sku)} · Miss ${num(miss)}`,
+              );
+            })
+            .join("") ||
+          `<div class="text-on-surface-variant text-sm p-4 text-center border border-dashed border-outline-variant rounded-xl">Belum ada data fleet.</div>`
+        }
+      </div>
+    </div>
+  </div>`;
+}
+
+function unloadingEstimateReport(rows = []) {
+  const candidates = [...rows]
+    .filter((r) => {
+      const st = String(r.status || "").toUpperCase();
+      return (
+        !st.includes("EXPIRED") &&
+        (st.includes("WAIT") ||
+          st.includes("CALLED") ||
+          st.includes("UNLOADING") ||
+          st.includes("COMPLETED"))
+      );
+    })
+    .map((row) => ({ row, info: getUnloadingEstimateInfo(row) }))
+    .sort((a, b) => {
+      if (a.info.outSla !== b.info.outSla) return a.info.outSla ? -1 : 1;
+      const ea =
+        parseDateLocal(a.info.estimateText)?.getTime() || 9999999999999;
+      const eb =
+        parseDateLocal(b.info.estimateText)?.getTime() || 9999999999999;
+      return ea - eb || queueNoOrderValue(a.row) - queueNoOrderValue(b.row);
+    });
+
+  const outSlaCount = candidates.filter((x) => x.info.outSla).length;
+  const onTrackCount = candidates.filter(
+    (x) => x.info.label === "ON TRACK" || x.info.label === "SLA OK",
+  ).length;
+  const noStartCount = candidates.filter(
+    (x) => !x.info.startText && !x.info.estimateText,
+  ).length;
+
+  return `<div class="rounded-xl border border-outline-variant/30 overflow-hidden mb-6">
+    <div class="bg-surface-container/60 px-4 py-3 border-b border-outline-variant/30">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div>
+          <h4 class="font-bold text-on-surface">Report Estimasi Selesai Bongkar per Mobil</h4>
+          <p class="text-xs text-on-surface-variant">Referensi utama: <b>SLA Finished At</b>. Kalau kosong, fallback dari Start Bongkar + rule SLA fleet.</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs font-bold">
+          <span class="rounded-full bg-error/10 text-error border border-error/30 px-3 py-1">OUT SLA: ${num(outSlaCount)}</span>
+          <span class="rounded-full bg-success/10 text-success border border-success/30 px-3 py-1">ON TRACK/OK: ${num(onTrackCount)}</span>
+          <span class="rounded-full bg-surface-container text-on-surface-variant border border-outline-variant px-3 py-1">BELUM START: ${num(noStartCount)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-surface-container text-on-surface-variant">
+          <tr>${["Queue", "Plat", "Vendor", "Fleet", "Gate", "Status", "Start Bongkar", "SLA Target", "Estimasi Selesai", "Sisa/Lewat", "SLA Bongkar"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase whitespace-nowrap">${h}</th>`).join("")}</tr>
+        </thead>
+        <tbody class="divide-y divide-outline-variant/10">
+          ${
+            candidates
+              .map(({ row, info }) => {
+                const delta =
+                  info.diffMinutes === null
+                    ? "-"
+                    : info.diffMinutes >= 0
+                      ? `Sisa ${formatMinutesCompact(info.diffMinutes)}`
+                      : `Lewat ${formatMinutesCompact(Math.abs(info.diffMinutes))}`;
+                return `<tr class="hover:bg-primary/5 ${info.outSla ? "bg-error/5" : ""}">
+              <td class="px-4 py-3 font-queue-id text-primary whitespace-nowrap">${esc(row.queue_no || "-")}</td>
+              <td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(row.plat_number || "-")}</td>
+              <td class="px-4 py-3 min-w-[180px]">${esc(row.vendor_name || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-bold">${esc(row.fleet_type || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap">${esc(row.gate || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap">${monitorStatusBadge(row.status || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap">${esc(info.startText || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-bold">${esc(info.targetHours ? `${info.targetHours} jam` : "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-queue-id">${esc(info.estimateText || "-")}</td>
+              <td class="px-4 py-3 whitespace-nowrap font-queue-id ${info.outSla ? "text-error" : "text-success"}">${esc(delta)}</td>
+              <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-3 py-1 rounded-full border text-xs font-bold ${info.badgeClass}">${esc(info.label)}</span></td>
+            </tr>`;
+              })
+              .join("") ||
+            `<tr><td colspan="11" class="px-6 py-8 text-center text-on-surface-variant">Belum ada data estimasi bongkar.</td></tr>`
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function monitorStatusBadge(status = "") {
   const st = String(status || "-").toUpperCase();
   const cls = st.includes("COMPLETED")
@@ -2706,6 +2985,10 @@ function pageMonitor() {
       </div>
 
       ${monitoringDetailReport(allRows)}
+
+      ${monitorChartReport(allRows)}
+
+      ${unloadingEstimateReport(allRows)}
 
       <div class="mb-6">${slaRowsLegend()}</div>
 
