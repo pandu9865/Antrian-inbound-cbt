@@ -17,7 +17,7 @@ const state = {
     checker_status: ["UNLOADING"],
     unload_sla: ["SLA OK", "SLA MISS", "ON PROCESS"],
     gate: Array.from(
-      { length: 30 },
+      { length: 24 },
       (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
     ),
     vendor_name: [],
@@ -699,16 +699,22 @@ async function refreshDriverTrackLiveData(silent = true) {
 function refreshDriverTrackDom() {
   if (!isDriverTrackMode()) return;
   const row = getDriverTicketEffectiveRow();
+  const running = getCurrentRunningTicket();
+  const finishAt = getEstimatedFinishedAt(running);
   const wait = document.getElementById("driver-track-waiting");
   const status = document.getElementById("driver-track-status");
   const gate = document.getElementById("driver-track-gate");
   const lastRefresh = document.getElementById("driver-track-last-refresh");
   const liveBadge = document.getElementById("driver-track-live-badge");
+  const runningQueue = document.getElementById("driver-track-running-queue");
+  const estFinish = document.getElementById("driver-track-est-finish");
 
   if (wait) wait.textContent = driverWaitingLabel(row);
   if (status) status.textContent = row.status || "WAITING";
   if (gate) gate.textContent = row.gate || "-";
   if (lastRefresh) lastRefresh.textContent = driverTrackLastRefreshAt || "-";
+  if (runningQueue) runningQueue.textContent = running?.queue_no || "-";
+  if (estFinish) estFinish.textContent = finishAt || "-";
 
   if (liveBadge) {
     const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
@@ -752,9 +758,11 @@ function pageDriverTrack() {
   const row = getDriverTicketEffectiveRow();
   const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
   const status = String(row.status || "WAITING").toUpperCase();
+  const running = getCurrentRunningTicket();
+  const finishAt = getEstimatedFinishedAt(running);
 
   return `<div class="min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
-    <div class="glass-card rounded-2xl p-6 w-full max-w-[560px] border border-outline-variant/50">
+    <div class="glass-card rounded-2xl p-6 w-full max-w-[640px] border border-outline-variant/50">
       <div class="text-center mb-6">
         <div class="text-[12px] uppercase tracking-[0.35em] text-on-surface-variant font-extrabold">Inbound CBT</div>
         <h1 class="text-2xl font-extrabold text-on-surface mt-2">Status Antrian Driver</h1>
@@ -766,8 +774,22 @@ function pageDriverTrack() {
       </div>
 
       <div class="text-center border-y border-outline-variant/40 py-6">
-        <div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian</div>
+        <div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian Anda</div>
         <div class="font-queue-id text-[56px] sm:text-[76px] leading-none text-primary font-black mt-3">${esc(row.queue_no || "-")}</div>
+      </div>
+
+      <div class="mt-5 rounded-2xl border border-primary/30 bg-primary/10 p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Sedang Berjalan</div>
+            <div id="driver-track-running-queue" class="font-queue-id text-3xl text-primary mt-2">${esc(running?.queue_no || "-")}</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-on-surface-variant">Estimasi Selesai</div>
+            <div id="driver-track-est-finish" class="font-queue-id text-2xl text-tertiary mt-2">${esc(finishAt || "-")}</div>
+          </div>
+        </div>
+        <div class="mt-3 text-[11px] text-on-surface-variant">Estimasi mengacu ke <b>SLA Finished At</b> / target SLA unloading.</div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
@@ -1242,16 +1264,27 @@ function uniqueGateList(values = []) {
 }
 
 function gateSelectOptions(selected = "", allowBlank = false) {
+  const selectedList = parseGateList(selected);
+  const selectedSet = new Set(selectedList.map((x) => String(x || "").trim()));
+  const activeSet =
+    typeof getActiveGateSet === "function"
+      ? getActiveGateSet(selectedList)
+      : new Set();
+
   const blank = allowBlank
     ? `<option value="" ${!selected ? "selected" : ""}>- Pilih Gate -</option>`
     : "";
+
   return (
     blank +
     (state.options.gate || [])
-      .map(
-        (gate) =>
-          `<option value="${esc(gate)}" ${String(gate) === String(selected) ? "selected" : ""}>${esc(gate)}</option>`,
-      )
+      .map((gate) => {
+        const gateText = String(gate || "").trim();
+        const isSelected =
+          selectedSet.has(gateText) || String(gate) === String(selected);
+        const isActive = activeSet.has(gateText) && !isSelected;
+        return `<option value="${esc(gate)}" ${isSelected ? "selected" : ""} ${isActive ? "disabled" : ""}>${esc(gate)}${isActive ? " — aktif" : ""}</option>`;
+      })
       .join("")
   );
 }
@@ -1393,12 +1426,10 @@ function setCheckerSubmitButtonState(stateName = "ready", label = "") {
 }
 
 function getCheckerActiveRows() {
-  return (state.dashboard?.queue || []).filter(
-    (r) =>
-      !String(r.status || "")
-        .toUpperCase()
-        .includes("COMPLETED"),
-  );
+  return (state.dashboard?.queue || []).filter((r) => {
+    const st = String(r.status || "").toUpperCase();
+    return !st.includes("COMPLETED") && !st.includes("EXPIRED");
+  });
 }
 
 function checkerRowKey(row = {}) {
@@ -2159,20 +2190,33 @@ function getMonitorSummary(rows = []) {
       .toUpperCase()
       .includes("COMPLETED"),
   ).length;
+  const expired = rows.filter((r) =>
+    String(r.status || "")
+      .toUpperCase()
+      .includes("EXPIRED"),
+  ).length;
   const miss = rows.filter(
     (r) => getInboundSlaInfo(r).status === "SLA MISS",
   ).length;
   const ok = rows.filter(
     (r) => getInboundSlaInfo(r).status === "SLA OK",
   ).length;
-  const active = rows.filter(
-    (r) =>
-      !String(r.status || "")
-        .toUpperCase()
-        .includes("COMPLETED"),
-  ).length;
+  const active = rows.filter((r) => {
+    const st = String(r.status || "").toUpperCase();
+    return !st.includes("COMPLETED") && !st.includes("EXPIRED");
+  }).length;
 
-  return { total, waiting, called, unloading, completed, miss, ok, active };
+  return {
+    total,
+    waiting,
+    called,
+    unloading,
+    completed,
+    expired,
+    miss,
+    ok,
+    active,
+  };
 }
 
 function slaRowsLegend() {
@@ -2232,7 +2276,7 @@ function getGateVisibility(rows = []) {
   const gates = (
     state.options.gate ||
     Array.from(
-      { length: 30 },
+      { length: 24 },
       (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
     )
   ).map((gate) => ({
@@ -2307,12 +2351,10 @@ function gateVisibilityPanel(rows = []) {
 
 function pageMonitor() {
   const allRows = state.dashboard?.queue || [];
-  const rows = allRows.filter(
-    (r) =>
-      !String(r.status || "")
-        .toUpperCase()
-        .includes("COMPLETED"),
-  );
+  const rows = allRows.filter((r) => {
+    const st = String(r.status || "").toUpperCase();
+    return !st.includes("COMPLETED") && !st.includes("EXPIRED");
+  });
   const summary = getMonitorSummary(allRows);
 
   return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
@@ -2325,13 +2367,14 @@ function pageMonitor() {
         <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh Output form</button>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
         ${miniMetric("Total Input", summary.total, "text-primary")}
         ${miniMetric("Aktif", summary.active, "text-primary")}
         ${miniMetric("Waiting", summary.waiting, "text-tertiary")}
         ${miniMetric("Called", summary.called, "text-primary")}
         ${miniMetric("Unloading", summary.unloading, "text-warning")}
         ${miniMetric("Completed", summary.completed, "text-success")}
+        ${miniMetric("Expired", summary.expired || 0, summary.expired ? "text-error" : "text-success")}
         ${miniMetric("SLA Miss", summary.miss, summary.miss ? "text-error" : "text-success")}
       </div>
 
@@ -3106,28 +3149,54 @@ function priorityItem(r) {
 function checkerListRow(r, i) {
   const st = String(r.status || "").toUpperCase();
   const isCompleted = st.includes("COMPLETED");
-  const wait = isCompleted
-    ? "Selesai"
+  const isExpired = st.includes("EXPIRED");
+  const terminal = isCompleted || isExpired;
+  const wait = terminal
+    ? isExpired
+      ? "Expired"
+      : "Selesai"
     : r.waiting_text || liveWaitingText(r.created_at, r.completed_at);
+  const callCount = Number(r.call_count || r.wa_call_count || 0) || 0;
   const actionLabel = isCompleted
     ? "Selesai"
-    : st.includes("UNLOADING")
-      ? "Selesai"
-      : st.includes("CALLED")
-        ? "Unloading"
-        : "Panggil";
+    : isExpired
+      ? "Expired"
+      : st.includes("UNLOADING")
+        ? "Selesai"
+        : st.includes("CALLED")
+          ? "Unloading"
+          : "Panggil";
   const key = checkerRowKey(r);
-  const actionButton = isCompleted
-    ? `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-70">Selesai</button>`
-    : `<button type="button" onclick="populateCheckerFromTicketKey('${key}')" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs">${esc(actionLabel)}</button>`;
+  const actionButton = terminal
+    ? `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-70">${esc(actionLabel)}</button>`
+    : `<button type="button" onclick="populateCheckerFromTicketKey('${key}')" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs whitespace-nowrap">${esc(actionLabel)}</button>`;
+
+  const waButton = terminal
+    ? ""
+    : `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-1 whitespace-nowrap" title="Kirim WhatsApp ke driver">
+        <span class="material-symbols-outlined text-base">chat</span>WA ${callCount ? `(${callCount}x)` : ""}
+      </button>`;
+
+  const failButton =
+    !terminal && st.includes("CALLED")
+      ? callCount >= 3
+        ? `<button type="button" onclick="markDriverCallFailedFromKey('${key}', this)" class="bg-error/15 border border-error/30 text-error px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-1 whitespace-nowrap" title="Driver gagal dipanggil, antrian expired">
+            <span class="material-symbols-outlined text-base">person_cancel</span>Gagal
+          </button>`
+        : `<button type="button" disabled class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs cursor-not-allowed opacity-60 whitespace-nowrap" title="Bisa dipakai setelah WA/call 3x">
+            ${callCount}/3
+          </button>`
+      : "";
 
   return `<tr
     data-status="${esc(st || "-")}"
     data-vendor="${esc(String(r.vendor_name || "").toLowerCase())}"
     data-queue="${esc(String(r.queue_no || r.original_queue_no || "").toLowerCase())}"
     data-po="${esc(String(r.po_number || "").toLowerCase())}"
-    class="hover:bg-primary/5 transition-colors ${isCompleted ? "hidden" : ""}">
-    <td class="px-4 py-3">${actionButton}</td>
+    class="hover:bg-primary/5 transition-colors ${terminal ? "hidden" : ""}">
+    <td class="px-4 py-3">
+      <div class="flex flex-wrap gap-2">${actionButton}${waButton}${failButton}</div>
+    </td>
     <td class="px-4 py-3 font-queue-id text-primary">${esc(r.queue_no || "-")}</td>
     <td class="px-4 py-3 min-w-[180px]">${esc(r.vendor_name || "-")}</td>
     <td class="px-4 py-3 font-bold text-sm">${esc(r.fleet_type || "-")}</td>
@@ -3136,7 +3205,7 @@ function checkerListRow(r, i) {
     <td class="px-4 py-3">${esc(r.driver_name || "-")}</td>
     <td class="px-4 py-3 min-w-[120px]">${esc(r.gate || "-")}</td>
     <td class="px-4 py-3">${esc(st || "-")}</td>
-    <td class="px-4 py-3 font-queue-id ${isCompleted ? "text-success" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
+    <td class="px-4 py-3 font-queue-id ${isCompleted ? "text-success" : isExpired ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(st)}">${esc(wait)}</td>
   </tr>`;
 }
 
@@ -3270,13 +3339,14 @@ function filterCheckerAdvanced() {
     .querySelectorAll("#checker-security-table tbody tr")
     .forEach((tr) => {
       const rowStatus = String(tr.dataset.status || "").toUpperCase();
-      const isCompleted = rowStatus.includes("COMPLETED");
+      const isTerminal =
+        rowStatus.includes("COMPLETED") || rowStatus.includes("EXPIRED");
       const okVendor = !vendor || (tr.dataset.vendor || "").includes(vendor);
       const okQueue = !queue || (tr.dataset.queue || "").includes(queue);
       const okPo = !po || (tr.dataset.po || "").includes(po);
       const okStatus = status === "ALL" || rowStatus.includes(status);
       tr.style.display =
-        !isCompleted && okVendor && okQueue && okPo && okStatus ? "" : "none";
+        !isTerminal && okVendor && okQueue && okPo && okStatus ? "" : "none";
     });
 }
 
@@ -3345,28 +3415,41 @@ function printWaitingListTicket(index) {
 function reportTable(rows) {
   return `<div class="overflow-x-auto"><table id="report-table" class="w-full text-left">
     <thead class="bg-surface-container text-on-surface-variant">
-      <tr>${["Print", "Created", "Queue", "Vendor", "Fleet", "Plat", "PO", "Gate", "Status", "Menunggu", "Qty", "SKU", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
+      <tr>${["Print", "WA", "Created", "Queue", "Vendor", "Fleet", "Plat", "PO", "Gate", "Status", "Call", "Menunggu", "Qty", "SKU", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr>
     </thead>
     <tbody class="divide-y divide-outline-variant/10">
       ${
         rows
-          .map(
-            (r, i) =>
-              `<tr class="hover:bg-primary/5">
+          .map((r, i) => {
+            const key = checkerRowKey(r);
+            const st = String(r.status || "").toUpperCase();
+            const terminal = st.includes("COMPLETED") || st.includes("EXPIRED");
+            const callCount = Number(r.call_count || r.wa_call_count || 0) || 0;
+            return `<tr class="hover:bg-primary/5 ${st.includes("EXPIRED") ? "bg-error/5" : ""}">
                 <td class="px-4 py-3">
                   <button type="button" onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs flex items-center gap-1 whitespace-nowrap">
                     <span class="material-symbols-outlined text-sm">print</span>Print
                   </button>
                 </td>
+                <td class="px-4 py-3">
+                  ${
+                    terminal
+                      ? `<span class="text-xs text-on-surface-variant">-</span>`
+                      : `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-1 whitespace-nowrap" title="Kirim WhatsApp ke driver">
+                          <span class="material-symbols-outlined text-base">chat</span>WA
+                        </button>`
+                  }
+                </td>
                 ${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}
-                <td class="px-4 py-3 text-sm font-queue-id text-tertiary live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(r.status || "")}">${esc(r.waiting_text || liveWaitingText(r.created_at, r.completed_at))}</td>
+                <td class="px-4 py-3 text-sm font-bold">${esc(callCount)}</td>
+                <td class="px-4 py-3 text-sm font-queue-id ${st.includes("EXPIRED") ? "text-error" : "text-tertiary"} live-waiting-cell" data-live-waiting="1" data-created="${esc(r.created_at || "")}" data-completed="${esc(r.completed_at || "")}" data-status="${esc(r.status || "")}">${esc(st.includes("EXPIRED") ? "Expired" : r.waiting_text || liveWaitingText(r.created_at, r.completed_at))}</td>
                 <td class="px-4 py-3 text-sm">${esc(r.total_po_qty ?? "")}</td>
                 <td class="px-4 py-3 text-sm">${esc(r.count_po_sku ?? "")}</td>
-                <td class="px-4 py-3 text-sm">${esc(r.unload_sla ?? "")}</td>
-              </tr>`,
-          )
+                <td class="px-4 py-3 text-sm">${esc(r.unload_sla ?? r.sla_status ?? "")}</td>
+              </tr>`;
+          })
           .join("") ||
-        `<tr><td colspan="13" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`
+        `<tr><td colspan="15" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`
       }
     </tbody>
   </table></div>`;
@@ -3829,6 +3912,96 @@ function csvSafe(v) {
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
+function getCibitungGateOptions() {
+  return Array.from(
+    { length: 24 },
+    (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
+  );
+}
+
+function isTerminalQueueStatus(status = "") {
+  const st = String(status || "").toUpperCase();
+  return (
+    st.includes("COMPLETED") || st.includes("EXPIRED") || st.includes("CANCEL")
+  );
+}
+
+function getActiveGateSet(exclude = []) {
+  const excludeSet = new Set(
+    (Array.isArray(exclude) ? exclude : parseGateList(exclude)).map((x) =>
+      String(x || "").trim(),
+    ),
+  );
+  const set = new Set();
+
+  (state.dashboard?.queue || []).forEach((row) => {
+    const st = String(row.status || "").toUpperCase();
+    if (isTerminalQueueStatus(st)) return;
+    if (!(st.includes("CALLED") || st.includes("UNLOADING"))) return;
+
+    parseGateList(row.gate || "").forEach((gate) => {
+      if (gate && !excludeSet.has(gate)) set.add(gate);
+    });
+  });
+
+  return set;
+}
+
+function getCurrentRunningTicket(queue = state.dashboard?.queue || []) {
+  const rows = [...(queue || [])].filter((row) => {
+    const st = String(row.status || "").toUpperCase();
+    const hasGate =
+      String(row.gate || "").trim() && String(row.gate || "").trim() !== "-";
+    return (
+      hasGate &&
+      !isTerminalQueueStatus(st) &&
+      (st.includes("UNLOADING") || st.includes("CALLED"))
+    );
+  });
+
+  rows.sort((a, b) => {
+    const ta =
+      parseDateLocal(
+        a.start_unloading_at || a.called_at || a.updated_at || a.created_at,
+      )?.getTime() || 0;
+    const tb =
+      parseDateLocal(
+        b.start_unloading_at || b.called_at || b.updated_at || b.created_at,
+      )?.getTime() || 0;
+    return tb - ta;
+  });
+
+  return rows[0] || null;
+}
+
+function getEstimatedFinishedAt(row = {}) {
+  if (!row) return "";
+  const direct =
+    row.sla_finished_at ||
+    row["SLA Finished At"] ||
+    row.raw?.sla_finished_at ||
+    row.raw?.["SLA Finished At"] ||
+    "";
+  if (direct) return direct;
+
+  const start = parseDateLocal(
+    row.start_unloading_at || row.called_at || row.updated_at,
+  );
+  const hours =
+    typeof getInboundSlaHours === "function" ? getInboundSlaHours(row) : 0;
+  if (!start || !hours) return "";
+
+  return formatDateTimeLocal(
+    new Date(start.getTime() + hours * 60 * 60 * 1000),
+  );
+}
+
+function getQueueRunningSummaryText() {
+  const running = getCurrentRunningTicket();
+  if (!running) return "Sedang berjalan: -";
+  return `Sedang berjalan: ${running.queue_no || "-"} · estimasi selesai ${getEstimatedFinishedAt(running) || "-"}`;
+}
+
 function demoDashboard() {
   return {
     kpis: [
@@ -3899,7 +4072,7 @@ function demoDashboard() {
     queue: [],
     priority: [],
     dock: Array.from(
-      { length: 30 },
+      { length: 24 },
       (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
     ).map((g) => ({ gate: g, status: "KOSONG" })),
     report_preview: [],
@@ -3958,3 +4131,8 @@ function initShader() {
   }
   render(0);
 }
+
+// Cibitung gate count normalization
+try {
+  state.options.gate = getCibitungGateOptions();
+} catch (err) {}

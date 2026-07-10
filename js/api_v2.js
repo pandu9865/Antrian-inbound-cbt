@@ -104,6 +104,14 @@ async function updateCheckerToBackend(body = {}) {
   return apiPostV2("updateChecker", body);
 }
 
+async function sendDriverWhatsAppToBackend(body = {}) {
+  return apiPostV2("sendDriverWhatsApp", body);
+}
+
+async function failCallToBackend(body = {}) {
+  return apiPostV2("failCall", body);
+}
+
 async function fetchV2Data() {
   // FAST SECURITY LOAD:
   // Jangan pakai inboundRaw karena itu baca kpiRaw + table + tablev2 full.
@@ -324,8 +332,17 @@ function applyCheckerUpdateToQueue(body = {}) {
       original_queue_no: row.original_queue_no || body.queue_no || row.queue_no,
       plat_number: bodyPlate || row.plat_number,
       status: String(body.status || row.status || "WAITING").toUpperCase(),
-      completed_at: body.completed_at || "",
+      completed_at:
+        body.completed_at !== undefined
+          ? body.completed_at
+          : row.completed_at || "",
       updated_at: body.updated_at || formatDateTimeLocal(new Date()),
+      expired_at: body.expired_at || row.expired_at || "",
+      expired_reason: body.expired_reason || row.expired_reason || "",
+      call_count: toNumberV2(body.call_count ?? row.call_count ?? 0),
+      wa_call_status: body.wa_call_status || row.wa_call_status || "",
+      wa_call_sent_at: body.wa_call_sent_at || row.wa_call_sent_at || "",
+      wa_call_error: body.wa_call_error || row.wa_call_error || "",
     };
   });
 
@@ -333,7 +350,10 @@ function applyCheckerUpdateToQueue(body = {}) {
     state.dashboard.queue = nextQueue;
     state.dashboard.report_preview = nextQueue;
     state.dashboard.priority = nextQueue
-      .filter((q) => !String(q.status || "").includes("COMPLETED"))
+      .filter((q) => {
+        const st = String(q.status || "").toUpperCase();
+        return !st.includes("COMPLETED") && !st.includes("EXPIRED");
+      })
       .slice(0, 8);
   }
 
@@ -533,7 +553,11 @@ function buildQueueFromOutputForm(outputRows = []) {
       register_time: getCell(row, ["register_time"], created),
       completed_at: completed,
       called_at: getCell(row, ["called_at"], ""),
+      start_unloading_at: getCell(row, ["start_unloading_at"], ""),
       updated_at: getCell(row, ["updated_at"], ""),
+      expired_at: getCell(row, ["expired_at"], ""),
+      expired_reason: getCell(row, ["expired_reason"], ""),
+      sla_finished_at: getCell(row, ["sla_finished_at", "SLA Finished At"], ""),
       vendor_name: getCell(row, ["vendor_name", "Vendor Name"], ""),
       fleet_type: getCell(
         row,
@@ -555,6 +579,11 @@ function buildQueueFromOutputForm(outputRows = []) {
       ),
       actual_quantity: toNumberV2(getCell(row, ["actual_quantity"], 0)),
       count_po_sku: toNumberV2(getCell(row, ["count_po_sku", "Count SKU"], 0)),
+      call_count: toNumberV2(getCell(row, ["call_count", "wa_call_count"], 0)),
+      last_call_attempt_at: getCell(row, ["last_call_attempt_at"], ""),
+      wa_call_status: getCell(row, ["wa_call_status"], ""),
+      wa_call_sent_at: getCell(row, ["wa_call_sent_at"], ""),
+      wa_call_error: getCell(row, ["wa_call_error"], ""),
       waiting_text: getCell(row, ["waiting_text"], ""),
       waiting_minutes: minutesFromCreated(created),
       raw: row,
@@ -734,6 +763,13 @@ function buildOptionsFromV2(tableRows = []) {
 
   return {
     ...state.options,
+    gate:
+      typeof getCibitungGateOptions === "function"
+        ? getCibitungGateOptions()
+        : Array.from(
+            { length: 24 },
+            (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
+          ),
     vendor_name: vendors,
     po_number: po,
     fleet_type: vehicle.length ? vehicle : state.options.fleet_type,
@@ -777,18 +813,40 @@ function buildDashboardFromV2(response) {
   const kpis = buildKpis(kpiRaw, tableRows, queue);
 
   const dockMap = {};
+  const gates =
+    typeof getCibitungGateOptions === "function"
+      ? getCibitungGateOptions()
+      : Array.from(
+          { length: 24 },
+          (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
+        );
+
+  gates.forEach((gate) => {
+    dockMap[gate] = { gate, status: "KOSONG", queue_no: "", plat_number: "" };
+  });
+
   for (const q of queue) {
-    const gate = q.gate || "-";
-    if (!dockMap[gate])
-      dockMap[gate] = { gate, status: "KOSONG", queue_no: "", plat_number: "" };
-    if (!q.status.includes("COMPLETED")) {
-      dockMap[gate] = {
-        gate,
-        status: q.status || "AKTIF",
-        queue_no: q.queue_no,
-        plat_number: q.plat_number,
-      };
-    }
+    const st = String(q.status || "").toUpperCase();
+    if (st.includes("COMPLETED") || st.includes("EXPIRED")) continue;
+
+    parseGateList(q.gate || "").forEach((gate) => {
+      if (!dockMap[gate]) {
+        dockMap[gate] = {
+          gate,
+          status: "KOSONG",
+          queue_no: "",
+          plat_number: "",
+        };
+      }
+      if (st.includes("CALLED") || st.includes("UNLOADING")) {
+        dockMap[gate] = {
+          gate,
+          status: q.status || "AKTIF",
+          queue_no: q.queue_no,
+          plat_number: q.plat_number,
+        };
+      }
+    });
   }
 
   return {
@@ -797,7 +855,10 @@ function buildDashboardFromV2(response) {
     summary,
     queue,
     priority: sortQueueBySlotSequence(
-      queue.filter((q) => !String(q.status || "").includes("COMPLETED")),
+      queue.filter((q) => {
+        const st = String(q.status || "").toUpperCase();
+        return !st.includes("COMPLETED") && !st.includes("EXPIRED");
+      }),
     ).slice(0, 8),
     dock: Object.values(dockMap).slice(0, 24),
     report_preview: queue,
@@ -1682,6 +1743,120 @@ function recall() {
     return;
   }
   showToast("Panggil ulang " + (state.lastCalled?.queue_no || "-"));
+}
+
+function buildBackendActionBodyFromRow(row = {}) {
+  return {
+    ticket_id: row.ticket_id || "",
+    queue_no: row.original_queue_no || row.queue_no || "",
+    plat_number: row.plat_number || "",
+    po_number: row.po_number || "",
+    vendor_name: row.vendor_name || "",
+    fleet_type: row.fleet_type || "",
+    gate: row.gate || "",
+    status: row.status || "",
+  };
+}
+
+function applyBackendActionResult(result = {}) {
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  if (rows.length) {
+    replaceOutputRowsInRawResponse(rows);
+    if (v2RawResponse) state.dashboard = buildDashboardFromV2(v2RawResponse);
+    return rows;
+  }
+  return [];
+}
+
+async function sendDriverWhatsAppFromKey(encodedKey = "", btn = null) {
+  const row =
+    typeof findCheckerRowByKey === "function"
+      ? findCheckerRowByKey(encodedKey)
+      : null;
+  if (!row) {
+    showToast("Data ticket tidak ditemukan. Refresh dulu.");
+    return;
+  }
+
+  const phone = String(row.phone_number || "").trim();
+  if (!phone) {
+    showToast("Nomor WhatsApp driver kosong.");
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("opacity-60", "cursor-wait");
+  }
+
+  try {
+    const result = await sendDriverWhatsAppToBackend(
+      buildBackendActionBodyFromRow(row),
+    );
+    applyBackendActionResult(result);
+    showToast(
+      "WhatsApp terkirim ke driver" +
+        (result?.call_count ? ` (${result.call_count}x)` : ""),
+    );
+    if (["checker", "laporan", "monitor"].includes(state.page)) {
+      renderPage(state.page, false);
+    }
+  } catch (err) {
+    console.error(err);
+    showToast("WA gagal: " + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("opacity-60", "cursor-wait");
+    }
+  }
+}
+
+async function markDriverCallFailedFromKey(encodedKey = "", btn = null) {
+  const row =
+    typeof findCheckerRowByKey === "function"
+      ? findCheckerRowByKey(encodedKey)
+      : null;
+  if (!row) {
+    showToast("Data ticket tidak ditemukan. Refresh dulu.");
+    return;
+  }
+
+  const callCount = Number(row.call_count || row.wa_call_count || 0) || 0;
+  if (callCount < 3) {
+    showToast("Gagal panggil baru bisa dipakai setelah driver dipanggil 3x.");
+    return;
+  }
+
+  const ok = confirm(
+    `Expire antrian ${row.queue_no || "-"}? Driver wajib registrasi ulang kalau datang lagi.`,
+  );
+  if (!ok) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("opacity-60", "cursor-wait");
+  }
+
+  try {
+    const result = await failCallToBackend({
+      ...buildBackendActionBodyFromRow(row),
+      reason: "Driver tidak hadir setelah dipanggil 3x",
+    });
+    applyBackendActionResult(result);
+    showToast("Antrian di-expire. Driver wajib registrasi ulang.");
+    if (["checker", "laporan", "monitor", "panggil"].includes(state.page)) {
+      renderPage(state.page, false);
+    }
+  } catch (err) {
+    console.error(err);
+    showToast("Gagal expire antrian: " + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("opacity-60", "cursor-wait");
+    }
+  }
 }
 
 async function loadDebug() {
