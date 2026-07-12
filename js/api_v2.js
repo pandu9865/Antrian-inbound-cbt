@@ -1727,6 +1727,13 @@ async function submitChecker(e) {
     targetStatus === "CALLED"
       ? formatDateTimeLocal(new Date())
       : body.called_at || "";
+
+  // Simpan waktu mulai bongkar sejak frontend supaya UI dan backend konsisten.
+  body.start_unloading_at =
+    targetStatus === "UNLOADING"
+      ? body.start_unloading_at || formatDateTimeLocal(new Date())
+      : body.start_unloading_at || "";
+
   body.completed_at =
     targetStatus === "COMPLETED" ? formatDateTimeLocal(new Date()) : "";
 
@@ -1748,6 +1755,10 @@ async function submitChecker(e) {
           targetStatus === "CALLED"
             ? body.called_at
             : row.called_at || body.called_at || "",
+        start_unloading_at:
+          targetStatus === "UNLOADING"
+            ? body.start_unloading_at || row.start_unloading_at || ""
+            : row.start_unloading_at || body.start_unloading_at || "",
         completed_at: body.completed_at || "",
       });
       updatedLocal = true;
@@ -1809,11 +1820,22 @@ async function submitChecker(e) {
     }
   } catch (err) {
     console.error(err);
-    showToast(
-      updatedLocal || updatedUi
-        ? "Checker tersimpan lokal, backend gagal: " + err.message
-        : "Checker backend gagal: " + err.message,
-    );
+
+    // Backend adalah source of truth.
+    // Kalau gagal, jangan biarkan status lokal palsu bertahan.
+    try {
+      const outputResponse = await fetchOutputFormData();
+      v2RawResponse = {
+        ...(v2RawResponse || {}),
+        timestamp: outputResponse?.timestamp || new Date().toISOString(),
+        outputForm: getOutputFormRows(outputResponse),
+      };
+      state.dashboard = buildDashboardFromV2(v2RawResponse);
+    } catch (refreshErr) {
+      console.error("Rollback refresh checker gagal", refreshErr);
+    }
+
+    showToast("Checker backend gagal: " + err.message);
   }
 
   if (typeof setCheckerSubmitButtonState === "function") {
