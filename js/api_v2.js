@@ -1722,6 +1722,11 @@ async function submitChecker(e) {
 
   body.status = targetStatus;
   body.unload_sla = targetStatus === "COMPLETED" ? "SLA OK" : "ON PROCESS";
+
+  // Kirim operational_date untuk fallback data legacy bila ticket_id kosong.
+  if (!body.operational_date && typeof getOperationalDateKey === "function") {
+    body.operational_date = getOperationalDateKey(new Date());
+  }
   body.updated_at = formatDateTimeLocal(new Date());
   body.called_at =
     targetStatus === "CALLED"
@@ -1740,12 +1745,23 @@ async function submitChecker(e) {
   const local = getLocalTickets();
   let updatedLocal = false;
   for (const row of local) {
-    const match =
-      (body.ticket_id && row.ticket_id === body.ticket_id) ||
-      (body.queue_no &&
+    let match = false;
+
+    if (body.ticket_id) {
+      match = String(row.ticket_id || "") === String(body.ticket_id);
+    } else if (body.queue_no) {
+      match =
         (row.queue_no === body.queue_no ||
-          row.original_queue_no === body.queue_no)) ||
-      normalizePlateValue(row.plat_number) === body.plat_number;
+          row.original_queue_no === body.queue_no) &&
+        (!body.plat_number ||
+          normalizePlateValue(row.plat_number) === body.plat_number);
+    } else if (body.plat_number) {
+      match =
+        normalizePlateValue(row.plat_number) === body.plat_number &&
+        (!body.operational_date ||
+          String(row.operational_date || "") ===
+            String(body.operational_date || ""));
+    }
 
     if (match) {
       Object.assign(row, body, {
