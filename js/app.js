@@ -6159,7 +6159,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
 
   function opDateKeyLocal(value = new Date()) {
     const d =
-      value instanceof Date ? new Date(value) : parseDateFlexible(value);
+      value instanceof Date ? new Date(value) : parseInboundDateSafe(value);
     if (!d || isNaN(d.getTime())) return "";
     if (d.getHours() < 7) d.setDate(d.getDate() - 1);
     return [
@@ -6198,7 +6198,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
     start.setHours(7, 0, 0, 0);
     start.setDate(start.getDate() - Math.max(0, days - 1));
     return rows.filter((r) => {
-      const d = parseDateFlexible(
+      const d = parseInboundDateSafe(
         r.register_time || r.created_at || r.Timestamp,
       );
       return d && d >= start && d <= now;
@@ -6316,7 +6316,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
   function heatmapData(rows = []) {
     const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
     rows.forEach((row) => {
-      const d = parseDateFlexible(row.register_time || row.created_at);
+      const d = parseInboundDateSafe(row.register_time || row.created_at);
       if (d) hours[d.getHours()].count += 1;
     });
     return hours;
@@ -6386,8 +6386,8 @@ function securityFormMatchesRowsForPrint(rows = []) {
     });
     return events
       .sort((a, b) => {
-        const da = parseDateFlexible(a.time);
-        const db = parseDateFlexible(b.time);
+        const da = parseInboundDateSafe(a.time);
+        const db = parseInboundDateSafe(b.time);
         return (db?.getTime() || 0) - (da?.getTime() || 0);
       })
       .slice(0, 20);

@@ -2522,7 +2522,7 @@ async function submitSecurity(e) {
     let d;
     if (value instanceof Date) d = new Date(value);
     else if (typeof parseDateFlexible === "function")
-      d = parseDateFlexible(value);
+      d = parseInboundDateSafe(value);
     else d = new Date(value);
     if (!d || isNaN(d.getTime())) d = new Date();
     if (d.getHours() < 7) d.setDate(d.getDate() - 1);
