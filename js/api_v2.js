@@ -1,3 +1,48 @@
+function parseInboundDateSafe(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : new Date(value);
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  let parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  let match = text.match(
+    /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+  );
+  if (match) {
+    parsed = new Date(
+      Number(match[3]),
+      Number(match[2]) - 1,
+      Number(match[1]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0),
+    );
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  match = text.match(
+    /^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+  );
+  if (match) {
+    parsed = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0),
+    );
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
 const API_URL_V2 =
   "https://script.google.com/macros/s/AKfycbyjby6UR8H0H397xkHbpx9F57BhPKeTCndn3Ic3aKpqvEeQnIGYUmwBMa9JzPBhIoeD/exec";
 
@@ -952,7 +997,11 @@ async function initApi() {
         ? getLatestCallTicket(state.dashboard.queue)
         : state.dashboard.queue[0] || state.lastCalled;
     updateApiPill("on", "API live");
-    renderPage(state.page || "daftar", false);
+    const nextPage =
+      state.page === "login"
+        ? getDefaultPageForRole(getAuthUser()?.role)
+        : state.page || getDefaultPageForRole(getAuthUser()?.role);
+    renderPage(nextPage, false);
   } catch (err) {
     console.error(err);
     updateApiPill("error", "API error");
@@ -2521,9 +2570,7 @@ async function submitSecurity(e) {
   ) {
     let d;
     if (value instanceof Date) d = new Date(value);
-    else if (typeof parseDateFlexible === "function")
-      d = parseInboundDateSafe(value);
-    else d = new Date(value);
+    else d = parseInboundDateSafe(value);
     if (!d || isNaN(d.getTime())) d = new Date();
     if (d.getHours() < 7) d.setDate(d.getDate() - 1);
     return [

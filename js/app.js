@@ -1,3 +1,48 @@
+function parseInboundDateSafe(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : new Date(value);
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  let parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  let match = text.match(
+    /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+  );
+  if (match) {
+    parsed = new Date(
+      Number(match[3]),
+      Number(match[2]) - 1,
+      Number(match[1]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0),
+    );
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  match = text.match(
+    /^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+  );
+  if (match) {
+    parsed = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0),
+    );
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
 const state = {
   page: "daftar",
   loading: false,
@@ -243,7 +288,8 @@ function submitLogin(e) {
   setAuthUser(found);
   applyRoleAccessUI();
   showToast("Login sebagai " + normalizeRole(found.role));
-  renderPage(getDefaultPageForRole(found.role), false);
+  const nextPage = getDefaultPageForRole(found.role);
+  setTimeout(() => renderPage(nextPage, false), 0);
 }
 
 function logoutUser() {
@@ -4431,6 +4477,8 @@ function renderPage(page, toast = true) {
     laporan: pageLaporan,
     setting: pageSetting,
     debug: pageDebug,
+    spv_dashboard:
+      typeof pageSpvDashboard === "function" ? pageSpvDashboard : pageDebug,
   };
 
   // Public page untuk QR driver, tidak perlu login.
@@ -4483,6 +4531,12 @@ function renderPage(page, toast = true) {
     pageMeta[safe].subtitle;
   root.innerHTML = map[safe]();
   applyRoleAccessUI();
+
+  if (safe === "spv_dashboard") {
+    setTimeout(() => {
+      if (typeof ensureGlobalSearch === "function") ensureGlobalSearch();
+    }, 0);
+  }
 
   if (safe === "daftar")
     setTimeout(() => {
@@ -6878,50 +6932,6 @@ function securityFormMatchesRowsForPrint(rows = []) {
         syncManualFieldsToSecurityForm(m);
       }
       return originalSubmitSecurity(e);
-    };
-  }
-
-  const originalRenderPage = window.renderPage;
-  if (typeof originalRenderPage === "function") {
-    window.renderPage = function patchedRenderPage(page, toast = true) {
-      const user = getAuthUser?.();
-      if (page === SPV_PAGE) {
-        if (!user || normalizeRole(user.role) !== "SPV") {
-          showToast("Dashboard SPV hanya untuk akun SPV.");
-          return originalRenderPage(getDefaultPageForRole(user?.role), false);
-        }
-        state.page = SPV_PAGE;
-        stopDriverTrackTimer?.();
-        stopCallMonitorRuntime?.();
-        applyTvModeStyles?.(false);
-        const root = document.getElementById("page-root");
-        if (root) root.innerHTML = pageSpvDashboard();
-        const meta = pageMeta[SPV_PAGE];
-        const title = document.getElementById("page-title");
-        const subtitle = document.getElementById("page-subtitle");
-        if (title) title.textContent = meta.title;
-        if (subtitle) subtitle.textContent = meta.subtitle;
-        document.querySelectorAll("[data-page]").forEach((btn) => {
-          btn.className =
-            btn.dataset.page === SPV_PAGE
-              ? btn.classList.contains("mobile-nav-btn")
-                ? mobActive
-                : navActive
-              : btn.classList.contains("mobile-nav-btn")
-                ? mobBase
-                : navBase;
-        });
-        location.hash = SPV_PAGE;
-        ensureGlobalSearch();
-        return;
-      }
-
-      const result = originalRenderPage(page, toast);
-      setTimeout(() => {
-        ensureGlobalSearch();
-        if (page === "daftar") injectManualEntryPanel();
-      }, 0);
-      return result;
     };
   }
 
