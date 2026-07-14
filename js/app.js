@@ -7402,6 +7402,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
   };
 
   window.checkerTicketCard = function checkerTicketCardV3(row = {}, i = 0) {
+    const role = String(getAuthUser?.()?.role || "").toUpperCase();
     const st = String(row.status || "WAITING").toUpperCase();
     const checkerActive = ["WAITING", "CALLED", "UNLOADING"].includes(st);
     const isCalled = st === "CALLED";
@@ -7447,9 +7448,11 @@ function securityFormMatchesRowsForPrint(rows = []) {
       }
     }
 
+    // Panggilan Checker mengirim WA otomatis.
+    // Tombol WA manual tetap tersedia, tetapi khusus akun SPV.
     const waButton =
-      checkerActive && !isUnloading
-        ? `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1"><span class="material-symbols-outlined text-base">chat</span>WA</button>`
+      role === "SPV" && checkerActive && !isUnloading
+        ? `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1" title="Kirim ulang WA manual khusus SPV"><span class="material-symbols-outlined text-base">chat</span>WA Manual</button>`
         : "";
 
     const waitText =
@@ -7494,7 +7497,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
                     r.created_at,
                     r.waiting_gr_at || r.completed_at,
                   );
-          return `<tr class="hover:bg-primary/5 ${st === "EXPIRED" ? "bg-error/5" : ""}"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3">${terminal ? "-" : `<button onclick="sendDriverWhatsAppFromKey('${key}',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs">WA</button>`}</td>${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}<td class="px-4 py-3 font-bold">${esc(r.call_count || 0)}</td><td class="px-4 py-3 font-queue-id">${esc(wait)}</td><td class="px-4 py-3">${esc(r.total_po_qty ?? "")}</td><td class="px-4 py-3">${esc(r.count_po_sku ?? "")}</td><td class="px-4 py-3">${esc(r.unload_sla ?? r.sla_status ?? "")}</td></tr>`;
+          return `<tr class="hover:bg-primary/5 ${st === "EXPIRED" ? "bg-error/5" : ""}"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3">${role === "SPV" && !terminal ? `<button onclick="sendDriverWhatsAppFromKey('${key}',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs">WA Manual</button>` : "-"}</td>${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}<td class="px-4 py-3 font-bold">${esc(r.call_count || 0)}</td><td class="px-4 py-3 font-queue-id">${esc(wait)}</td><td class="px-4 py-3">${esc(r.total_po_qty ?? "")}</td><td class="px-4 py-3">${esc(r.count_po_sku ?? "")}</td><td class="px-4 py-3">${esc(r.unload_sla ?? r.sla_status ?? "")}</td></tr>`;
         })
         .join("") ||
       `<tr><td colspan="16" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`

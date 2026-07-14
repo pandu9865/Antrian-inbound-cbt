@@ -1807,7 +1807,24 @@ async function submitChecker(e) {
     if (targetStatus === "CALLED") {
       const freshRow = result?.rows?.[0] || optimisticRow;
       const count = Number(result?.call_count || freshRow.call_count || 1) || 1;
-      showToast(`Nomor dipanggil ke monitor TV (${Math.min(count, 3)}/3)`);
+      const waStatus = String(result?.auto_wa_status || "").toUpperCase();
+      const waMessage = String(result?.auto_wa_message || "").trim();
+
+      if (waStatus === "SENT") {
+        showToast(
+          `Panggilan ${Math.min(count, 3)}/3 tersimpan + WA otomatis terkirim`,
+        );
+      } else if (waStatus === "FAILED") {
+        showToast(
+          `Panggilan ${Math.min(count, 3)}/3 tersimpan, WA gagal: ${waMessage || "provider error"}`,
+        );
+      } else if (waStatus === "DISABLED") {
+        showToast(
+          `Panggilan ${Math.min(count, 3)}/3 tersimpan, WA otomatis nonaktif`,
+        );
+      } else {
+        showToast(`Nomor dipanggil ke monitor TV (${Math.min(count, 3)}/3)`);
+      }
     } else if (targetStatus === "UNLOADING") {
       showToast("Status berubah menjadi UNLOADING");
     } else {
@@ -2979,7 +2996,20 @@ async function submitSecurity(e) {
       const fresh = result?.rows?.[0] || row;
       const newCount =
         Number(result?.call_count || fresh.call_count || callCount + 1) || 0;
-      showToast(`Driver dipanggil ulang (${Math.min(newCount, 3)}/3)`);
+      const waStatus = String(result?.auto_wa_status || "").toUpperCase();
+      const waMessage = String(result?.auto_wa_message || "").trim();
+
+      if (waStatus === "SENT") {
+        showToast(
+          `Panggilan ulang ${Math.min(newCount, 3)}/3 + WA otomatis terkirim`,
+        );
+      } else if (waStatus === "FAILED") {
+        showToast(
+          `Panggilan ulang ${Math.min(newCount, 3)}/3 tersimpan, WA gagal: ${waMessage || "provider error"}`,
+        );
+      } else {
+        showToast(`Driver dipanggil ulang (${Math.min(newCount, 3)}/3)`);
+      }
       renderPage("checker", false);
     } catch (err) {
       console.error(err);
@@ -3051,6 +3081,12 @@ async function submitSecurity(e) {
     encodedKey = "",
     btn = null,
   ) {
+    const actorRole = String(getAuthUser?.()?.role || "").toUpperCase();
+    if (actorRole !== "SPV") {
+      showToast("Kirim WhatsApp manual hanya tersedia untuk SPV.");
+      return;
+    }
+
     let row =
       typeof findCheckerRowByKey === "function"
         ? findCheckerRowByKey(encodedKey)
@@ -3073,6 +3109,7 @@ async function submitSecurity(e) {
       const result = await sendDriverWhatsAppToBackend({
         ...buildBackendActionBodyFromRow(row),
         phone_number: phone,
+        actor_role: actorRole,
       });
       applyBackendActionResult(result);
       showToast("WhatsApp terkirim ke driver.");
