@@ -606,6 +606,9 @@ function buildQueueFromOutputForm(outputRows = []) {
       created_at: created,
       register_time: getCell(row, ["register_time"], created),
       completed_at: completed,
+      waiting_gr_at: getCell(row, ["waiting_gr_at"], ""),
+      done_gr_at: getCell(row, ["done_gr_at"], ""),
+      handover_grn_at: getCell(row, ["handover_grn_at"], ""),
       called_at: getCell(row, ["called_at"], ""),
       start_unloading_at: getCell(row, ["start_unloading_at"], ""),
       updated_at: getCell(row, ["updated_at"], ""),
@@ -1678,10 +1681,12 @@ async function submitChecker(e) {
     showToast("Data sedang disimpan, tunggu sebentar.");
     return;
   }
+
   form.dataset.saving = "1";
   if (typeof setCheckerSubmitButtonState === "function") {
     setCheckerSubmitButtonState("saving", "Menyimpan...");
   }
+
   const requiredOk = validateRequiredFields(form);
   const plateOk = validatePlateInput(form.plat_number);
 
@@ -1690,63 +1695,65 @@ async function submitChecker(e) {
       "Wingbox bisa pilih 1 sampai 3 gate berbeda dan tidak boleh duplicate.",
     );
     form.dataset.saving = "0";
-    if (typeof updateCheckerStatusPreview === "function")
+    if (typeof updateCheckerStatusPreview === "function") {
       updateCheckerStatusPreview(form.status?.value || "CALLED");
+    }
     return;
   }
 
   if (!requiredOk || !plateOk) {
     showToast("Pilih data dari List Security dan isi Gate.");
     form.dataset.saving = "0";
-    if (typeof updateCheckerStatusPreview === "function")
+    if (typeof updateCheckerStatusPreview === "function") {
       updateCheckerStatusPreview(form.status?.value || "CALLED");
+    }
     return;
   }
 
   const body = Object.fromEntries(new FormData(form).entries());
-
-  // Kalau gate terkunci/disabled, hidden gate tetap dipakai.
   if (!body.gate) {
     body.gate =
       document.getElementById("checker-gate-value")?.value || "Dock 01";
   }
 
   body.plat_number = normalizePlateValue(body.plat_number);
+  body.actor_role = String(getAuthUser?.()?.role || "CHECKER").toUpperCase();
 
-  const requested = String(body.status || "CALLED").toUpperCase();
-  const targetStatus = requested.includes("COMPLETED")
-    ? "COMPLETED"
+  const requested = String(body.status || "CALLED")
+    .trim()
+    .toUpperCase();
+  const targetStatus = requested.includes("WAITING GR")
+    ? "WAITING GR"
     : requested.includes("UNLOADING")
       ? "UNLOADING"
       : "CALLED";
 
   body.status = targetStatus;
-  body.unload_sla = targetStatus === "COMPLETED" ? "SLA OK" : "ON PROCESS";
+  body.unload_sla = targetStatus === "WAITING GR" ? "ON PROCESS" : "ON PROCESS";
 
-  // Kirim operational_date untuk fallback data legacy bila ticket_id kosong.
   if (!body.operational_date && typeof getOperationalDateKey === "function") {
     body.operational_date = getOperationalDateKey(new Date());
   }
-  body.updated_at = formatDateTimeLocal(new Date());
+
+  const nowText = formatDateTimeLocal(new Date());
+  body.updated_at = nowText;
   body.called_at =
     targetStatus === "CALLED"
-      ? formatDateTimeLocal(new Date())
+      ? body.called_at || nowText
       : body.called_at || "";
-
-  // Simpan waktu mulai bongkar sejak frontend supaya UI dan backend konsisten.
   body.start_unloading_at =
     targetStatus === "UNLOADING"
-      ? body.start_unloading_at || formatDateTimeLocal(new Date())
+      ? body.start_unloading_at || nowText
       : body.start_unloading_at || "";
-
-  body.completed_at =
-    targetStatus === "COMPLETED" ? formatDateTimeLocal(new Date()) : "";
+  body.waiting_gr_at =
+    targetStatus === "WAITING GR"
+      ? body.waiting_gr_at || nowText
+      : body.waiting_gr_at || "";
+  body.completed_at = "";
 
   const local = getLocalTickets();
-  let updatedLocal = false;
   for (const row of local) {
     let match = false;
-
     if (body.ticket_id) {
       match = String(row.ticket_id || "") === String(body.ticket_id);
     } else if (body.queue_no) {
@@ -1755,43 +1762,31 @@ async function submitChecker(e) {
           row.original_queue_no === body.queue_no) &&
         (!body.plat_number ||
           normalizePlateValue(row.plat_number) === body.plat_number);
-    } else if (body.plat_number) {
-      match =
-        normalizePlateValue(row.plat_number) === body.plat_number &&
-        (!body.operational_date ||
-          String(row.operational_date || "") ===
-            String(body.operational_date || ""));
     }
-
-    if (match) {
-      Object.assign(row, body, {
-        status: targetStatus,
-        unload_sla: body.unload_sla,
-        called_at:
-          targetStatus === "CALLED"
-            ? body.called_at
-            : row.called_at || body.called_at || "",
-        start_unloading_at:
-          targetStatus === "UNLOADING"
-            ? body.start_unloading_at || row.start_unloading_at || ""
-            : row.start_unloading_at || body.start_unloading_at || "",
-        completed_at: body.completed_at || "",
-      });
-      updatedLocal = true;
-    }
+    if (!match) continue;
+    Object.assign(row, body, {
+      status: targetStatus,
+      called_at:
+        targetStatus === "CALLED"
+          ? row.called_at || body.called_at
+          : row.called_at || "",
+      start_unloading_at:
+        targetStatus === "UNLOADING"
+          ? row.start_unloading_at || body.start_unloading_at
+          : row.start_unloading_at || body.start_unloading_at || "",
+      waiting_gr_at:
+        targetStatus === "WAITING GR"
+          ? row.waiting_gr_at || body.waiting_gr_at
+          : row.waiting_gr_at || body.waiting_gr_at || "",
+    });
   }
   saveLocalTickets(local);
 
   const optimisticRow = buildUpdatedOutputRowFromBody(body);
-  const updatedUi = applyCheckerUpdateToQueue(body);
-
+  applyCheckerUpdateToQueue(body);
   if (v2RawResponse) {
     replaceOutputRowsInRawResponse([optimisticRow]);
     state.dashboard = buildDashboardFromV2(v2RawResponse);
-    state.lastCalled =
-      typeof getLatestCallTicket === "function"
-        ? getLatestCallTicket(state.dashboard.queue)
-        : state.lastCalled;
   }
 
   try {
@@ -1799,46 +1794,19 @@ async function submitChecker(e) {
     if (Array.isArray(result?.rows) && result.rows.length) {
       replaceOutputRowsInRawResponse(result.rows);
       state.dashboard = buildDashboardFromV2(v2RawResponse);
-    } else if (v2RawResponse) {
-      replaceOutputRowsInRawResponse([optimisticRow]);
-      state.dashboard = buildDashboardFromV2(v2RawResponse);
     }
 
-    state.lastCalled =
-      typeof getLatestCallTicket === "function"
-        ? getLatestCallTicket(state.dashboard.queue)
-        : state.lastCalled;
-
     if (targetStatus === "CALLED") {
-      var freshRows = Array.isArray(result?.rows) ? result.rows : [];
-      var freshRow = freshRows[0] || buildUpdatedOutputRowFromBody(body);
-      var latestCallCount =
-        Number(
-          result?.call_count || freshRow.call_count || body.call_count || 1,
-        ) || 1;
-      showToast(
-        "Nomor dipanggil ke monitor TV (" +
-          Math.min(latestCallCount, 3) +
-          "/3)",
-      );
-      if (
-        latestCallCount >= 3 &&
-        typeof showDriverNoShowSuggestionFromKey === "function"
-      ) {
-        setTimeout(function () {
-          showDriverNoShowSuggestionFromKey(checkerRowKey(freshRow));
-        }, 250);
-      }
+      const freshRow = result?.rows?.[0] || optimisticRow;
+      const count = Number(result?.call_count || freshRow.call_count || 1) || 1;
+      showToast(`Nomor dipanggil ke monitor TV (${Math.min(count, 3)}/3)`);
     } else if (targetStatus === "UNLOADING") {
       showToast("Status berubah menjadi UNLOADING");
     } else {
-      showToast("Status berubah menjadi SELESAI UNLOADING");
+      showToast("Finish unload berhasil. Status menjadi WAITING GR");
     }
   } catch (err) {
     console.error(err);
-
-    // Backend adalah source of truth.
-    // Kalau gagal, jangan biarkan status lokal palsu bertahan.
     try {
       const outputResponse = await fetchOutputFormData();
       v2RawResponse = {
@@ -1850,8 +1818,9 @@ async function submitChecker(e) {
     } catch (refreshErr) {
       console.error("Rollback refresh checker gagal", refreshErr);
     }
-
     showToast("Checker backend gagal: " + err.message);
+  } finally {
+    form.dataset.saving = "0";
   }
 
   if (typeof setCheckerSubmitButtonState === "function") {
@@ -2806,7 +2775,7 @@ async function submitSecurity(e) {
           "-",
       ).trim() || "-";
 
-    if (status.includes("COMPLETED")) {
+    if (status.includes("WAITING GR")) {
       return [
         "Selesaikan unloading?",
         "",
@@ -2814,7 +2783,7 @@ async function submitSecurity(e) {
         "Plat: " + plate,
         "Gate: " + gate,
         "",
-        "Status akan menjadi COMPLETED dan gate akan dilepas.",
+        "Status akan menjadi WAITING GR dan gate akan dilepas.",
       ].join("\n");
     }
 
@@ -2868,5 +2837,252 @@ async function submitSecurity(e) {
     } finally {
       if (form) delete form.dataset.mobileConfirmed;
     }
+  };
+})();
+
+/* ==========================================================================
+ * STATUS FLOW V3 + CALL COOLDOWN + ROLE ACTIONS
+ * WAITING -> CALLED -> UNLOADING -> WAITING GR -> DONE GR -> COMPLETED
+ * Panggilan real maksimal 3x. Step ke-4 adalah EXPIRED.
+ * ========================================================================== */
+(function installInboundStatusFlowV3Api() {
+  if (window.__inboundStatusFlowV3ApiInstalled) return;
+  window.__inboundStatusFlowV3ApiInstalled = true;
+
+  window.getCallCooldownRemainingSeconds =
+    function getCallCooldownRemainingSeconds(row = {}) {
+      const last = parseInboundDateSafe(
+        row.last_call_attempt_at || row.raw?.last_call_attempt_at || "",
+      );
+      if (!last) return 0;
+      return Math.max(0, 60 - Math.floor((Date.now() - last.getTime()) / 1000));
+    };
+
+  window.advanceGrStatusFromKey = async function advanceGrStatusFromKey(
+    encodedKey = "",
+    targetStatus = "",
+    btn = null,
+  ) {
+    const row =
+      typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(encodedKey)
+        : null;
+    if (!row) {
+      showToast("Ticket tidak ditemukan. Refresh dulu.");
+      return;
+    }
+
+    const role = String(getAuthUser?.()?.role || "").toUpperCase();
+    const target = String(targetStatus || "")
+      .trim()
+      .toUpperCase();
+    const allowed =
+      (target === "DONE GR" && ["ADMIN", "SPV"].includes(role)) ||
+      (target === "COMPLETED" && ["SECURITY", "SPV"].includes(role));
+
+    if (!allowed) {
+      showToast("Role ini tidak punya akses untuk update status tersebut.");
+      return;
+    }
+
+    const label = target === "DONE GR" ? "Done GR" : "Handover GRN";
+    const ok = confirm(
+      `${label} untuk ${row.queue_no || "-"}?\n\nPlat: ${row.plat_number || "-"}\nStatus akan menjadi ${target}.`,
+    );
+    if (!ok) return;
+
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+    }
+
+    try {
+      const nowText = formatDateTimeLocal(new Date());
+      const body = {
+        ...buildBackendActionBodyFromRow(row),
+        status: target,
+        actor_role: role,
+        updated_at: nowText,
+        done_gr_at: target === "DONE GR" ? nowText : row.done_gr_at || "",
+        handover_grn_at:
+          target === "COMPLETED" ? nowText : row.handover_grn_at || "",
+        completed_at: target === "COMPLETED" ? nowText : row.completed_at || "",
+      };
+      const result = await updateCheckerToBackend(body);
+      applyBackendActionResult(result);
+      showToast(`${label} berhasil. Status ${target}.`);
+      renderPage("laporan", false);
+    } catch (err) {
+      console.error(err);
+      showToast(`${label} gagal: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+      }
+    }
+  };
+
+  window.recallDriverFromKey = async function recallDriverFromKeyV3(
+    encodedKey = "",
+    btn = null,
+  ) {
+    let row =
+      typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(encodedKey)
+        : null;
+    if (!row) {
+      showToast("Data ticket tidak ditemukan. Refresh dulu.");
+      return;
+    }
+    row = await refreshOutputFormForFreshRow(row);
+    const callCount = Number(row.call_count || 0) || 0;
+    if (callCount >= 3) {
+      showDriverNoShowSuggestionFromKey(encodedKey, btn);
+      return;
+    }
+    const remaining = getCallCooldownRemainingSeconds(row);
+    if (remaining > 0) {
+      showToast(`Panggil ulang tersedia dalam ${remaining} detik.`);
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+    }
+    try {
+      const result = await updateCheckerToBackend({
+        ...buildBackendActionBodyFromRow(row),
+        status: "CALLED",
+        actor_role: String(getAuthUser?.()?.role || "CHECKER").toUpperCase(),
+        unload_sla: "ON PROCESS",
+        gate: row.gate || "",
+        updated_at: formatDateTimeLocal(new Date()),
+      });
+      applyBackendActionResult(result);
+      const fresh = result?.rows?.[0] || row;
+      const newCount =
+        Number(result?.call_count || fresh.call_count || callCount + 1) || 0;
+      showToast(`Driver dipanggil ulang (${Math.min(newCount, 3)}/3)`);
+      renderPage("checker", false);
+    } catch (err) {
+      console.error(err);
+      showToast("Panggil ulang gagal: " + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+      }
+    }
+  };
+
+  window.markDriverCallFailedFromKey = async function markDriverCallFailedV3(
+    encodedKey = "",
+    btn = null,
+  ) {
+    let row =
+      typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(encodedKey)
+        : null;
+    if (!row) {
+      showToast("Data ticket tidak ditemukan. Refresh dulu.");
+      return;
+    }
+    row = await refreshOutputFormForFreshRow(row);
+    const callCount = Number(row.call_count || 0) || 0;
+    if (callCount < 3) {
+      showToast(
+        `Expired 4/4 baru aktif setelah 3 kali panggilan. Saat ini ${callCount}/3.`,
+      );
+      return;
+    }
+    const remaining = getCallCooldownRemainingSeconds(row);
+    if (remaining > 0) {
+      showToast(`Expired 4/4 tersedia dalam ${remaining} detik.`);
+      return;
+    }
+    const ok = confirm(
+      `Yakin ticket ${row.queue_no || "-"} akan dibuat EXPIRED pada step 4/4?\n\nDriver sudah dipanggil 3 kali dan tidak datang. Setelah expired, driver wajib registrasi ulang.`,
+    );
+    if (!ok) return;
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+    }
+    try {
+      const result = await failCallToBackend({
+        ...buildBackendActionBodyFromRow(row),
+        actor_role: String(getAuthUser?.()?.role || "CHECKER").toUpperCase(),
+        reason:
+          "Driver tidak hadir setelah 3x panggilan. Expired pada step 4/4.",
+      });
+      applyBackendActionResult(result);
+      showToast("Ticket EXPIRED 4/4. Driver wajib registrasi ulang.");
+      renderPage("checker", false);
+    } catch (err) {
+      console.error(err);
+      showToast("Gagal expire ticket: " + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+      }
+    }
+  };
+
+  // WA tidak lagi menambah call_count. Call count hanya dari aksi Panggil.
+  window.sendDriverWhatsAppFromKey = async function sendDriverWhatsAppFromKeyV3(
+    encodedKey = "",
+    btn = null,
+  ) {
+    let row =
+      typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(encodedKey)
+        : null;
+    if (!row) {
+      showToast("Data ticket tidak ditemukan. Refresh dulu.");
+      return;
+    }
+    row = await refreshOutputFormForFreshRow(row);
+    const phone = normalizePhoneInputValue(row.phone_number || "");
+    if (!phone) {
+      showToast("Nomor WhatsApp driver kosong / format tidak valid.");
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+    }
+    try {
+      const result = await sendDriverWhatsAppToBackend({
+        ...buildBackendActionBodyFromRow(row),
+        phone_number: phone,
+      });
+      applyBackendActionResult(result);
+      showToast("WhatsApp terkirim ke driver.");
+      if (["checker", "laporan", "monitor"].includes(state.page))
+        renderPage(state.page, false);
+    } catch (err) {
+      console.error(err);
+      showToast("WA gagal: " + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+      }
+    }
+  };
+
+  const originalDriverWaitingLabelV3 =
+    window.driverWaitingLabel ||
+    (typeof driverWaitingLabel === "function" ? driverWaitingLabel : null);
+  window.driverWaitingLabel = function driverWaitingLabelV3(row = {}) {
+    const st = String(row.status || "").toUpperCase();
+    if (st === "WAITING GR" || st === "DONE GR" || st === "COMPLETED") {
+      return "Bongkar selesai";
+    }
+    return originalDriverWaitingLabelV3
+      ? originalDriverWaitingLabelV3(row)
+      : "-";
   };
 })();

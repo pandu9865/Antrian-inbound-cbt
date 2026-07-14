@@ -7165,3 +7165,516 @@ function securityFormMatchesRowsForPrint(rows = []) {
     true,
   );
 })();
+
+/* ==========================================================================
+ * UI V3: MULTI CHECKBOX PO + CALL COOLDOWN + STATUS FLOW GR
+ * ========================================================================== */
+(function installInboundStatusFlowV3Ui() {
+  if (window.__inboundStatusFlowV3UiInstalled) return;
+  window.__inboundStatusFlowV3UiInstalled = true;
+
+  window.__poBatchSelection = new Set();
+
+  window.togglePoBatchChoice = function togglePoBatchChoice(
+    encodedPo,
+    checked,
+  ) {
+    const po = poDecode(encodedPo);
+    if (checked) window.__poBatchSelection.add(po);
+    else window.__poBatchSelection.delete(po);
+    const btn = document.getElementById("po-batch-add-btn");
+    const count = window.__poBatchSelection.size;
+    if (btn) {
+      btn.disabled = count === 0;
+      btn.textContent = count ? `Tambah ${count} PO` : "Pilih PO";
+    }
+  };
+
+  window.applyPoBatchSelection = function applyPoBatchSelection() {
+    const values = [...window.__poBatchSelection];
+    if (!values.length) return;
+    addPoChoice(values.join(", "));
+    window.__poBatchSelection.clear();
+    filterPoDropdown();
+    document.getElementById("po-search-input")?.focus();
+  };
+
+  window.filterPoDropdown = function filterPoDropdownBatch() {
+    const list = document.getElementById("po-dropdown-list");
+    if (!list) return;
+    const options = getFilteredPoOptions();
+    const q = String(
+      document.getElementById("po-search-input")?.value || "",
+    ).trim();
+    const vendorFilter = getSelectedVendorFilter();
+    const registeredCount = getRegisteredPoSet().size;
+
+    if (!options.length) {
+      const msg = vendorFilter
+        ? q
+          ? "PO tidak ada untuk vendor/filter tersebut, atau PO sudah pernah daftar."
+          : "Belum ada PO available untuk vendor ini."
+        : "Pilih Vendor Name dulu supaya list PO terfilter.";
+      list.innerHTML = `<div class="px-3 py-3 text-[12px] text-on-surface-variant">${msg}${registeredCount ? `<div class="mt-1 text-warning font-bold">${registeredCount} PO sudah terdaftar dan disembunyikan.</div>` : ""}</div>`;
+      return;
+    }
+
+    const selectedBatch = window.__poBatchSelection;
+    list.innerHTML = `<div class="space-y-1 pb-14">
+      ${options
+        .map((po) => {
+          const meta = getPoMeta(po);
+          const checked = selectedBatch.has(po);
+          return `<label onpointerdown="event.stopPropagation()" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 grid grid-cols-[auto_1fr_auto] gap-3 items-center border-b border-outline-variant/20 cursor-pointer touch-manipulation">
+            <input type="checkbox" class="h-5 w-5 accent-primary" ${checked ? "checked" : ""} onchange="togglePoBatchChoice('${poEncode(po)}', this.checked)" />
+            <span class="min-w-0"><span class="font-queue-id text-[12px] sm:text-[13px] break-all block">${esc(po)}</span><span class="text-[10px] text-on-surface-variant font-bold block">${esc(meta?.vendor_name || "-")}</span></span>
+            <span class="text-[10px] text-primary font-bold">SKU ${esc(meta?.count_po_sku || 0)}</span>
+          </label>`;
+        })
+        .join("")}
+      </div>
+      <div class="sticky bottom-0 bg-surface-container-lowest border-t border-outline-variant p-2">
+        <button id="po-batch-add-btn" type="button" ${selectedBatch.size ? "" : "disabled"} onpointerdown="preventDropdownBlurSelect(event); applyPoBatchSelection()" class="w-full bg-primary-container text-on-primary-container rounded-lg px-4 py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed">${selectedBatch.size ? `Tambah ${selectedBatch.size} PO` : "Pilih PO"}</button>
+      </div>`;
+  };
+
+  window.getCheckerActiveRows = function getCheckerActiveRowsV3() {
+    return (state.dashboard?.queue || []).filter((r) => {
+      const st = String(r.status || "").toUpperCase();
+      return st === "WAITING" || st === "CALLED" || st === "UNLOADING";
+    });
+  };
+
+  window.getCheckerSectionRows = function getCheckerSectionRowsV3(
+    section = getCheckerSection(),
+  ) {
+    const safe = String(section || "memanggil").toLowerCase();
+    const rows = state.dashboard?.queue || [];
+    const filtered = rows.filter((row) => {
+      const st = String(row.status || "").toUpperCase();
+      if (safe === "unloading") return st === "UNLOADING";
+      if (safe === "selesai")
+        return ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(st);
+      return st === "WAITING" || st === "CALLED";
+    });
+    return typeof sortQueueBySlotSequence === "function"
+      ? sortQueueBySlotSequence(filtered)
+      : filtered;
+  };
+
+  window.checkerSectionCounts = function checkerSectionCountsV3() {
+    const rows = state.dashboard?.queue || [];
+    return {
+      memanggil: rows.filter((r) =>
+        ["WAITING", "CALLED"].includes(String(r.status || "").toUpperCase()),
+      ).length,
+      unloading: rows.filter(
+        (r) => String(r.status || "").toUpperCase() === "UNLOADING",
+      ).length,
+      selesai: rows.filter((r) =>
+        ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(
+          String(r.status || "").toUpperCase(),
+        ),
+      ).length,
+    };
+  };
+
+  window.checkerStatusPill = function checkerStatusPillV3(status = "") {
+    const st = String(status || "WAITING").toUpperCase();
+    const cls =
+      st === "EXPIRED"
+        ? "bg-error/10 text-error border-error/30"
+        : st === "COMPLETED"
+          ? "bg-success/10 text-success border-success/30"
+          : st === "DONE GR"
+            ? "bg-secondary/10 text-secondary border-secondary/30"
+            : st === "WAITING GR"
+              ? "bg-tertiary/10 text-tertiary border-tertiary/30"
+              : st === "UNLOADING"
+                ? "bg-warning/10 text-warning border-warning/30"
+                : st === "CALLED"
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "bg-surface-container-high text-on-surface-variant border-outline-variant";
+    return `<span class="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-extrabold ${cls}">${esc(st || "-")}</span>`;
+  };
+
+  window.populateCheckerFormFromRow = function populateCheckerFormFromRowV3(
+    row,
+  ) {
+    const form = document.getElementById("checker-form");
+    if (!row || !form) return;
+    const currentStatus = String(row.status || "").toUpperCase();
+    let nextStatus = "";
+    if (currentStatus === "WAITING") nextStatus = "CALLED";
+    else if (currentStatus === "CALLED") nextStatus = "UNLOADING";
+    else if (currentStatus === "UNLOADING") nextStatus = "WAITING GR";
+
+    if (!nextStatus) {
+      showToast(`Status ${currentStatus} sudah keluar dari proses Checker.`);
+      return;
+    }
+
+    const lockGate =
+      currentStatus === "CALLED" || currentStatus === "UNLOADING";
+    if (form.ticket_id) form.ticket_id.value = row.ticket_id || "";
+    if (form.queue_no)
+      form.queue_no.value = row.original_queue_no || row.queue_no || "";
+    if (form.vendor_name) form.vendor_name.value = row.vendor_name || "";
+    if (form.fleet_type) form.fleet_type.value = row.fleet_type || "";
+    if (form.plat_number)
+      form.plat_number.value = normalizePlateValue(row.plat_number || "");
+    renderCheckerGatePicker(row.fleet_type || "", row.gate || "", lockGate);
+    form.status.value = nextStatus;
+    form.unload_sla.value = "ON PROCESS";
+    updateCheckerStatusPreview(nextStatus);
+  };
+
+  window.updateCheckerStatusPreview = function updateCheckerStatusPreviewV3(
+    status = "CALLED",
+  ) {
+    const safe = String(status || "CALLED").toUpperCase();
+    const isWaitingGr = safe === "WAITING GR";
+    const isUnloading = safe === "UNLOADING";
+    const box = document.getElementById("checker-status-box");
+    const icon = document.getElementById("checker-status-icon");
+    const label = document.getElementById("checker-status-preview");
+    if (box) {
+      box.className = isWaitingGr
+        ? "bg-success/15 border border-success/30 rounded-lg px-4 py-3 text-success font-bold flex items-center gap-2"
+        : isUnloading
+          ? "bg-warning/15 border border-warning/30 rounded-lg px-4 py-3 text-warning font-bold flex items-center gap-2"
+          : "bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2";
+    }
+    if (icon)
+      icon.textContent = isWaitingGr
+        ? "task_alt"
+        : isUnloading
+          ? "local_shipping"
+          : "campaign";
+    if (label)
+      label.textContent = isWaitingGr
+        ? "FINISH UNLOAD → WAITING GR"
+        : isUnloading
+          ? "START UNLOAD → UNLOADING"
+          : "PANGGIL DRIVER → CALLED";
+    if (isWaitingGr) setCheckerSubmitButtonState("active", "Finish Unload");
+    else if (isUnloading) setCheckerSubmitButtonState("active", "Start Unload");
+    else setCheckerSubmitButtonState("active", "Panggil ke Gate");
+  };
+
+  window.callLimitBadge = function callLimitBadgeV3(row = {}) {
+    const count = Math.min(Number(row.call_count || 0) || 0, 4);
+    const cls =
+      count >= 4
+        ? "bg-error/10 text-error border-error/30"
+        : count >= 3
+          ? "bg-warning/10 text-warning border-warning/30"
+          : "bg-surface-container-high text-on-surface-variant border-outline-variant";
+    return `<span class="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-extrabold ${cls}">${count}/4 STEP</span>`;
+  };
+
+  window.checkerTicketCard = function checkerTicketCardV3(row = {}, i = 0) {
+    const st = String(row.status || "WAITING").toUpperCase();
+    const checkerActive = ["WAITING", "CALLED", "UNLOADING"].includes(st);
+    const isCalled = st === "CALLED";
+    const isUnloading = st === "UNLOADING";
+    const callCount = Number(row.call_count || 0) || 0;
+    const cooldown =
+      typeof getCallCooldownRemainingSeconds === "function"
+        ? getCallCooldownRemainingSeconds(row)
+        : 0;
+    const key = checkerRowKey(row);
+    const primaryLabel =
+      st === "WAITING"
+        ? "Panggil Gate"
+        : isCalled
+          ? "Start Unload"
+          : isUnloading
+            ? "Finish Unload"
+            : "Read Only";
+    const primaryIcon =
+      st === "WAITING"
+        ? "campaign"
+        : isCalled
+          ? "warehouse"
+          : isUnloading
+            ? "task_alt"
+            : "visibility";
+    const primaryButton = checkerActive
+      ? `<button type="button" onclick="populateCheckerFromTicketKey('${key}')" class="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg font-bold text-xs flex-1 inline-flex items-center justify-center gap-1"><span class="material-symbols-outlined text-base">${primaryIcon}</span>${primaryLabel}</button>`
+      : "";
+
+    let callAction = "";
+    if (isCalled) {
+      if (callCount >= 3) {
+        callAction =
+          cooldown > 0
+            ? `<button disabled data-call-cooldown-until="${Date.now() + cooldown * 1000}" class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs opacity-60">Expired 4/4 · ${cooldown}s</button>`
+            : `<button type="button" onclick="markDriverCallFailedFromKey('${key}', this)" class="bg-error/15 border border-error/30 text-error px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1"><span class="material-symbols-outlined text-base">person_cancel</span>Expired 4/4</button>`;
+      } else {
+        callAction =
+          cooldown > 0
+            ? `<button disabled data-call-cooldown-until="${Date.now() + cooldown * 1000}" class="bg-outline-variant text-on-surface-variant px-3 py-2 rounded-lg font-bold text-xs opacity-60">Panggil ${callCount + 1}/3 · ${cooldown}s</button>`
+            : `<button type="button" onclick="recallDriverFromKey('${key}', this)" class="bg-warning/15 border border-warning/30 text-warning px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1"><span class="material-symbols-outlined text-base">campaign</span>Panggil ${callCount + 1}/3</button>`;
+      }
+    }
+
+    const waButton =
+      checkerActive && !isUnloading
+        ? `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1"><span class="material-symbols-outlined text-base">chat</span>WA</button>`
+        : "";
+
+    const waitText =
+      st === "EXPIRED"
+        ? "Expired"
+        : ["WAITING GR", "DONE GR", "COMPLETED"].includes(st)
+          ? "Bongkar selesai"
+          : row.waiting_text ||
+            liveWaitingText(
+              row.created_at,
+              row.waiting_gr_at || row.completed_at,
+            );
+
+    return `<article class="checker-card rounded-2xl border border-outline-variant/40 bg-surface-container/45 p-4 shadow-sm" data-status="${esc(st)}" data-vendor="${esc(String(row.vendor_name || "").toLowerCase())}" data-queue="${esc(String(row.queue_no || "").toLowerCase())}" data-po="${esc(String(row.po_number || "").toLowerCase())}" data-plate="${esc(String(row.plat_number || "").toLowerCase())}">
+      <div class="flex items-start justify-between gap-3"><div><div class="font-queue-id text-primary text-2xl">${esc(row.queue_no || "-")}</div><div class="text-[11px] uppercase text-on-surface-variant font-bold mt-1">${esc(row.vendor_name || "-")}</div></div><div class="flex flex-col items-end gap-1">${checkerStatusPill(st)}${isCalled ? callLimitBadge(row) : ""}</div></div>
+      <div class="grid grid-cols-2 gap-2 mt-4 text-xs"><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Plat</div><div class="font-queue-id text-sm mt-1">${esc(row.plat_number || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Gate</div><div class="font-bold text-sm mt-1">${esc(row.gate || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Driver</div><div class="font-bold truncate mt-1">${esc(row.driver_name || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Menunggu</div><div class="font-queue-id text-tertiary mt-1">${esc(waitText)}</div></div></div>
+      <div class="mt-3 text-xs text-on-surface-variant"><div><b>Fleet:</b> ${esc(row.fleet_type || "-")}</div><div class="truncate"><b>PO:</b> ${esc(row.po_number || "-")}</div>${isUnloading ? `<div><b>Estimasi selesai:</b> ${esc(getEstimatedFinishedAt(row) || row.sla_finished_at || "-")}</div>` : ""}</div>
+      <div class="mt-4 flex flex-wrap gap-2">${primaryButton}${callAction}${waButton}</div>
+    </article>`;
+  };
+
+  window.reportTable = function reportTableV3(rows) {
+    const role = String(getAuthUser?.()?.role || "").toUpperCase();
+    return `<div class="overflow-x-auto"><table id="report-table" class="w-full text-left"><thead class="bg-surface-container text-on-surface-variant"><tr>${["Action", "Print", "WA", "Created", "Queue", "Vendor", "Fleet", "Plat", "PO", "Gate", "Status", "Call", "Menunggu", "Qty", "SKU", "SLA"].map((h) => `<th class="px-4 py-3 font-label-sm uppercase">${h}</th>`).join("")}</tr></thead><tbody class="divide-y divide-outline-variant/10">${
+      rows
+        .map((r, i) => {
+          const key = checkerRowKey(r);
+          const st = String(r.status || "").toUpperCase();
+          let action = `<span class="text-xs text-on-surface-variant">-</span>`;
+          if (st === "WAITING GR" && ["ADMIN", "SPV"].includes(role))
+            action = `<button onclick="advanceGrStatusFromKey('${key}','DONE GR',this)" class="bg-secondary-container text-on-secondary-container px-3 py-2 rounded-lg font-bold text-xs whitespace-nowrap">Done GR</button>`;
+          if (st === "DONE GR" && ["SECURITY", "SPV"].includes(role))
+            action = `<button onclick="advanceGrStatusFromKey('${key}','COMPLETED',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs whitespace-nowrap">Handover GRN</button>`;
+          const terminal = st === "COMPLETED" || st === "EXPIRED";
+          const wait =
+            st === "EXPIRED"
+              ? "Expired"
+              : ["WAITING GR", "DONE GR", "COMPLETED"].includes(st)
+                ? "Bongkar selesai"
+                : r.waiting_text ||
+                  liveWaitingText(
+                    r.created_at,
+                    r.waiting_gr_at || r.completed_at,
+                  );
+          return `<tr class="hover:bg-primary/5 ${st === "EXPIRED" ? "bg-error/5" : ""}"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3">${terminal ? "-" : `<button onclick="sendDriverWhatsAppFromKey('${key}',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs">WA</button>`}</td>${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}<td class="px-4 py-3 font-bold">${esc(r.call_count || 0)}</td><td class="px-4 py-3 font-queue-id">${esc(wait)}</td><td class="px-4 py-3">${esc(r.total_po_qty ?? "")}</td><td class="px-4 py-3">${esc(r.count_po_sku ?? "")}</td><td class="px-4 py-3">${esc(r.unload_sla ?? r.sla_status ?? "")}</td></tr>`;
+        })
+        .join("") ||
+      `<tr><td colspan="16" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`
+    }</tbody></table></div>`;
+  };
+
+  window.getMonitorSummary = function getMonitorSummaryV3(rows = []) {
+    const count = (status) =>
+      rows.filter((r) => String(r.status || "").toUpperCase() === status)
+        .length;
+    const miss = rows.filter(
+      (r) => getInboundSlaInfo(r).status === "SLA MISS",
+    ).length;
+    const completed = count("COMPLETED");
+    const expired = count("EXPIRED");
+    return {
+      total: rows.length,
+      waiting: count("WAITING"),
+      called: count("CALLED"),
+      unloading: count("UNLOADING"),
+      waitingGr: count("WAITING GR"),
+      doneGr: count("DONE GR"),
+      completed,
+      expired,
+      miss,
+      active: rows.length - completed - expired,
+    };
+  };
+
+  window.pageMonitor = function pageMonitorV3() {
+    const rows = state.dashboard?.queue || [];
+    const s = getMonitorSummary(rows);
+    return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter"><div class="xl:col-span-12 glass-card rounded-xl p-6"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6"><div><h3 class="font-headline-md text-headline-md">Waiting List Monitoring</h3><p class="text-on-surface-variant">Flow: WAITING → CALLED → UNLOADING → WAITING GR → DONE GR → COMPLETED.</p></div><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button></div><div class="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-10 gap-3 mb-6">${miniMetric("Total", s.total, "text-primary")}${miniMetric("Waiting", s.waiting, "text-tertiary")}${miniMetric("Called", s.called, "text-primary")}${miniMetric("Unloading", s.unloading, "text-warning")}${miniMetric("Waiting GR", s.waitingGr, "text-tertiary")}${miniMetric("Done GR", s.doneGr, "text-secondary")}${miniMetric("Completed", s.completed, "text-success")}${miniMetric("Expired", s.expired, "text-error")}${miniMetric("Gate Aktif", getActiveGateSet().size, "text-primary")}${miniMetric("SLA Miss", s.miss, s.miss ? "text-error" : "text-success")}</div>${gateVisibilityPanel(rows)}${monitorUnifiedDetailTable(rows)}<div class="mb-2">${slaRowsLegend()}</div></div></div>`;
+  };
+
+  setInterval(() => {
+    document.querySelectorAll("[data-call-cooldown-until]").forEach((btn) => {
+      const left = Math.max(
+        0,
+        Math.ceil(
+          (Number(btn.dataset.callCooldownUntil || 0) - Date.now()) / 1000,
+        ),
+      );
+      if (left <= 0 && state.page === "checker") renderPage("checker", false);
+      else if (left > 0)
+        btn.textContent = btn.textContent.replace(/\d+s$/, `${left}s`);
+    });
+  }, 1000);
+})();
+
+/* ==========================================================================\n * MONITOR / SLA STOP TIME PATCH FOR WAITING GR AND DONE GR\n * ========================================================================== */
+(function installMonitorWaitingGrStopPatch() {
+  if (window.__monitorWaitingGrStopPatchInstalled) return;
+  window.__monitorWaitingGrStopPatchInstalled = true;
+
+  window.showDriverNoShowSuggestionFromKey =
+    function showDriverNoShowSuggestionFromKeyV3(encodedKey = "", btn = null) {
+      const row =
+        typeof findCheckerRowByKey === "function"
+          ? findCheckerRowByKey(encodedKey)
+          : null;
+      if (!row) {
+        showToast("Data ticket tidak ditemukan. Refresh dulu.");
+        return;
+      }
+      const count = Number(row.call_count || 0) || 0;
+      if (count < 3) {
+        showToast(
+          `Expired 4/4 baru aktif setelah 3 panggilan. Saat ini ${count}/3.`,
+        );
+        return;
+      }
+      if (typeof markDriverCallFailedFromKey === "function") {
+        markDriverCallFailedFromKey(encodedKey, btn);
+      }
+    };
+
+  window.getMonitorWaitingStopValue = function getMonitorWaitingStopValueV3(
+    row = {},
+  ) {
+    const st = String(row.status || "").toUpperCase();
+    if (st === "EXPIRED")
+      return getFirstValue(row, ["expired_at", "updated_at"]);
+    if (
+      ["CALLED", "UNLOADING", "WAITING GR", "DONE GR", "COMPLETED"].includes(st)
+    ) {
+      return getFirstValue(row, [
+        "called_at",
+        "waiting_gr_at",
+        "completed_at",
+        "updated_at",
+      ]);
+    }
+    return "";
+  };
+
+  window.getMonitorUnloadingRuntimeText =
+    function getMonitorUnloadingRuntimeTextV3(row = {}) {
+      const start = getFirstValue(row, ["start_unloading_at"]);
+      if (!start) return "-";
+      const st = String(row.status || "").toUpperCase();
+      const end =
+        st === "EXPIRED"
+          ? getFirstValue(row, ["expired_at", "updated_at"])
+          : getFirstValue(row, ["waiting_gr_at", "completed_at"]);
+      if (end) return formatMinutesCompact(minutesBetweenValues(start, end));
+      return liveWaitingText(start, "");
+    };
+
+  window.getUnloadingEstimateInfo = function getUnloadingEstimateInfoV3(
+    row = {},
+  ) {
+    const status = String(row.status || "").toUpperCase();
+    const targetHours = getInboundSlaHours(row);
+    const targetMinutes = targetHours ? targetHours * 60 : 0;
+    const registerText = getFirstValue(row, [
+      "register_time",
+      "created_at",
+      "Timestamp",
+    ]);
+    const calledText = getFirstValue(row, ["called_at"]);
+    const startText = getFirstValue(row, ["start_unloading_at"]);
+    const waitingGrText = getFirstValue(row, ["waiting_gr_at"]);
+    const completedText = getFirstValue(row, ["completed_at"]);
+    const expiredText = getFirstValue(row, ["expired_at"]);
+    const directFinish = getFirstValue(row, [
+      "sla_finished_at",
+      "SLA Finished At",
+    ]);
+    const startDate = parseDateLocal(startText);
+    const finishText = waitingGrText || completedText;
+    const finishDate = parseDateLocal(finishText);
+    const expiredDate = parseDateLocal(expiredText);
+    const directDate = parseDateLocal(directFinish);
+    const isExpired = status === "EXPIRED" || !!expiredText;
+    const unloadingFinished =
+      ["WAITING GR", "DONE GR", "COMPLETED"].includes(status) ||
+      !!waitingGrText ||
+      !!completedText;
+    const hasStartedBongkar =
+      !!startDate || status === "UNLOADING" || unloadingFinished;
+    let estimateDate = directDate || null;
+    if (!estimateDate && startDate && targetHours) {
+      estimateDate = new Date(
+        startDate.getTime() + targetHours * 60 * 60 * 1000,
+      );
+    }
+    const estimateText = estimateDate ? formatDateTimeLocal(estimateDate) : "";
+    const compareDate =
+      finishDate || (isExpired ? expiredDate : null) || new Date();
+    const outSla = !!(
+      !isExpired &&
+      hasStartedBongkar &&
+      estimateDate &&
+      compareDate.getTime() > estimateDate.getTime()
+    );
+    const diffMinutes = estimateDate
+      ? Math.floor((estimateDate.getTime() - compareDate.getTime()) / 60000)
+      : null;
+    let label = "BELUM START";
+    let badgeClass = "bg-warning/10 text-warning border-warning/30";
+    if (isExpired) {
+      label = "EXPIRED";
+      badgeClass = "bg-error/10 text-error border-error/30";
+    } else if (!targetHours) {
+      label = "NO SLA";
+      badgeClass =
+        "bg-surface-container text-on-surface-variant border-outline-variant";
+    } else if (!hasStartedBongkar) {
+      label = "BELUM START";
+    } else if (outSla) {
+      label = unloadingFinished ? "SLA MISS" : "OUT SLA BONGKAR";
+      badgeClass = "bg-error/10 text-error border-error/30";
+    } else if (unloadingFinished) {
+      label = "SLA OK";
+      badgeClass = "bg-success/10 text-success border-success/30";
+    } else if (status === "UNLOADING") {
+      label = "ON TRACK";
+      badgeClass = "bg-success/10 text-success border-success/30";
+    }
+    return {
+      targetHours,
+      targetMinutes,
+      targetLabel: targetHours ? `${targetHours} jam` : "-",
+      registerText,
+      calledText,
+      startText,
+      completedText: finishText,
+      expiredText,
+      isExpired,
+      hasStartedBongkar,
+      baseText: startText || "",
+      estimateSource: directDate
+        ? "SLA Finished At"
+        : startDate
+          ? "Start Bongkar + SLA Fleet"
+          : "Belum mulai bongkar",
+      estimateText,
+      outSla,
+      diffMinutes,
+      runningStartText: startText || calledText || registerText || "",
+      runningEndText: finishText || expiredText || "",
+      runningMinutes: minutesBetweenValues(
+        startText || calledText || registerText || "",
+        finishText || expiredText || formatDateTimeLocal(new Date()),
+      ),
+      label,
+      badgeClass,
+    };
+  };
+})();
