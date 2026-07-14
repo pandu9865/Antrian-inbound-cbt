@@ -2018,3 +2018,70 @@ body {
     justify-content: center;
   }
 }
+
+/* ==========================================================================
+   WAITING MONITOR V5 — SLA LIVE SAMPAI COMPLETED
+   ========================================================================== */
+
+.wm-live-sla {
+  display: flex;
+  min-width: 124px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.wm-sla-estimate {
+  color: var(--wm-muted);
+  font-size: 8px;
+  line-height: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wm-sla-countdown {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 900;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+}
+
+.wm-sla-countdown.is-running {
+  color: rgb(var(--primary));
+}
+
+.wm-sla-countdown.is-minus {
+  color: var(--wm-red);
+}
+
+.wm-detail-table th:last-child,
+.wm-detail-table td:last-child {
+  min-width: 142px;
+}
+
+/* ==========================================================================
+   WAITING MONITOR V7 — JAM MENUNGGU REGISTER SAMPAI COMPLETED
+   ========================================================================== */
+.wm-waiting-clock {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 900;
+  color: rgb(var(--tertiary));
+  white-space: nowrap;
+}
+
+.wm-waiting-clock.text-success {
+  color: rgb(var(--success));
+}
+
+.wm-waiting-clock.text-error {
+  color: rgb(var(--error));
+}
+
+.wm-detail-table th:nth-last-child(2),
+.wm-detail-table td:nth-last-child(2) {
+  min-width: 118px;
+}

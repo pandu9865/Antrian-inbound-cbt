@@ -1,20 +1,31 @@
 function parseInboundDateSafe(value) {
-  if (!value) return null;
+  if (value === undefined || value === null || value === "") return null;
+
   if (value instanceof Date) {
-    return isNaN(value.getTime()) ? null : new Date(value);
+    return isNaN(value.getTime()) ? null : new Date(value.getTime());
+  }
+
+  if (typeof value === "number" && isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return isNaN(date.getTime()) ? null : date;
   }
 
   const text = String(value).trim();
   if (!text) return null;
 
-  let parsed = new Date(text);
-  if (!isNaN(parsed.getTime())) return parsed;
+  if (/^\d{10,13}$/.test(text)) {
+    const numeric = Number(text);
+    const ms = text.length === 10 ? numeric * 1000 : numeric;
+    const date = new Date(ms);
+    if (!isNaN(date.getTime())) return date;
+  }
 
   let match = text.match(
-    /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+    /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (match) {
-    parsed = new Date(
+    const date = new Date(
       Number(match[3]),
       Number(match[2]) - 1,
       Number(match[1]),
@@ -22,14 +33,17 @@ function parseInboundDateSafe(value) {
       Number(match[5] || 0),
       Number(match[6] || 0),
     );
-    return isNaN(parsed.getTime()) ? null : parsed;
+    return isNaN(date.getTime()) ? null : date;
   }
 
   match = text.match(
-    /^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/,
   );
   if (match) {
-    parsed = new Date(
+    const native = new Date(text);
+    if (!isNaN(native.getTime())) return native;
+
+    const date = new Date(
       Number(match[1]),
       Number(match[2]) - 1,
       Number(match[3]),
@@ -37,10 +51,11 @@ function parseInboundDateSafe(value) {
       Number(match[5] || 0),
       Number(match[6] || 0),
     );
-    return isNaN(parsed.getTime()) ? null : parsed;
+    return isNaN(date.getTime()) ? null : date;
   }
 
-  return null;
+  const parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 const API_URL_V2 =
@@ -644,6 +659,15 @@ function fallbackDateValueV6(...values) {
   );
 }
 
+function normalizeOutputDateV7(...values) {
+  const value = fallbackDateValueV6(...values);
+  const date = parseInboundDateSafe(value);
+  if (!date) return "";
+
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function buildQueueFromOutputForm(outputRows = []) {
   return outputRows.map((row, idx) => {
     const status = String(
@@ -660,19 +684,19 @@ function buildQueueFromOutputForm(outputRows = []) {
       "created timestamp",
     ]);
 
-    const created = fallbackDateValueV6(
+    const created = normalizeOutputDateV7(
       getCell(row, ["created_at", "created at"]),
       getCell(row, ["register_time", "register time"]),
       timestamp,
     );
 
-    const registerTime = fallbackDateValueV6(
+    const registerTime = normalizeOutputDateV7(
       getCell(row, ["register_time", "register time"]),
       getCell(row, ["created_at", "created at"]),
       timestamp,
     );
 
-    const updatedAt = fallbackDateValueV6(
+    const updatedAt = normalizeOutputDateV7(
       getCell(row, ["updated_at", "updated at"]),
       getCell(row, ["last_call_at", "last call at"]),
       timestamp,
@@ -742,6 +766,14 @@ function buildQueueFromOutputForm(outputRows = []) {
       );
     }
 
+    calledAt = normalizeOutputDateV7(calledAt);
+    startUnloadingAt = normalizeOutputDateV7(startUnloadingAt);
+    completedAt = normalizeOutputDateV7(completedAt);
+
+    const normalizedWaitingGrAt = normalizeOutputDateV7(waitingGrAt);
+    const normalizedDoneGrAt = normalizeOutputDateV7(doneGrAt);
+    const normalizedHandoverGrnAt = normalizeOutputDateV7(handoverGrnAt);
+
     const plate = normalizePlateValue(
       getCell(
         row,
@@ -765,9 +797,9 @@ function buildQueueFromOutputForm(outputRows = []) {
       created_at: created,
       register_time: registerTime,
       completed_at: completedAt,
-      waiting_gr_at: waitingGrAt,
-      done_gr_at: doneGrAt,
-      handover_grn_at: handoverGrnAt,
+      waiting_gr_at: normalizedWaitingGrAt,
+      done_gr_at: normalizedDoneGrAt,
+      handover_grn_at: normalizedHandoverGrnAt,
       called_at: calledAt,
       start_unloading_at: startUnloadingAt,
       updated_at: updatedAt,

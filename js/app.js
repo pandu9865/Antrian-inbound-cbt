@@ -1,20 +1,31 @@
 function parseInboundDateSafe(value) {
-  if (!value) return null;
+  if (value === undefined || value === null || value === "") return null;
+
   if (value instanceof Date) {
-    return isNaN(value.getTime()) ? null : new Date(value);
+    return isNaN(value.getTime()) ? null : new Date(value.getTime());
+  }
+
+  if (typeof value === "number" && isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    const date = new Date(ms);
+    return isNaN(date.getTime()) ? null : date;
   }
 
   const text = String(value).trim();
   if (!text) return null;
 
-  let parsed = new Date(text);
-  if (!isNaN(parsed.getTime())) return parsed;
+  if (/^\d{10,13}$/.test(text)) {
+    const numeric = Number(text);
+    const ms = text.length === 10 ? numeric * 1000 : numeric;
+    const date = new Date(ms);
+    if (!isNaN(date.getTime())) return date;
+  }
 
   let match = text.match(
-    /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+    /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (match) {
-    parsed = new Date(
+    const date = new Date(
       Number(match[3]),
       Number(match[2]) - 1,
       Number(match[1]),
@@ -22,14 +33,17 @@ function parseInboundDateSafe(value) {
       Number(match[5] || 0),
       Number(match[6] || 0),
     );
-    return isNaN(parsed.getTime()) ? null : parsed;
+    return isNaN(date.getTime()) ? null : date;
   }
 
   match = text.match(
-    /^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/,
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/,
   );
   if (match) {
-    parsed = new Date(
+    const native = new Date(text);
+    if (!isNaN(native.getTime())) return native;
+
+    const date = new Date(
       Number(match[1]),
       Number(match[2]) - 1,
       Number(match[3]),
@@ -37,10 +51,11 @@ function parseInboundDateSafe(value) {
       Number(match[5] || 0),
       Number(match[6] || 0),
     );
-    return isNaN(parsed.getTime()) ? null : parsed;
+    return isNaN(date.getTime()) ? null : date;
   }
 
-  return null;
+  const parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 const state = {
@@ -4417,6 +4432,189 @@ function reportTable(rows) {
   </table></div>`;
 }
 
+function getTicketRawValueV7(row = {}, aliases = [], fallback = "") {
+  const direct = getFirstValue(row, aliases);
+  if (direct !== undefined && direct !== null && direct !== "") return direct;
+
+  const raw = row.raw && typeof row.raw === "object" ? row.raw : {};
+  const normalized = {};
+
+  Object.keys(raw).forEach((key) => {
+    const safe = String(key || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (
+      safe &&
+      normalized[safe] === undefined &&
+      raw[key] !== undefined &&
+      raw[key] !== null &&
+      raw[key] !== ""
+    ) {
+      normalized[safe] = raw[key];
+    }
+  });
+
+  for (const alias of aliases) {
+    const safe = String(alias || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (
+      normalized[safe] !== undefined &&
+      normalized[safe] !== null &&
+      normalized[safe] !== ""
+    ) {
+      return normalized[safe];
+    }
+  }
+
+  return fallback;
+}
+
+function getTicketRegisterTimeV7(row = {}) {
+  return getTicketRawValueV7(row, [
+    "register_time",
+    "register time",
+    "created_at",
+    "created at",
+    "Timestamp",
+    "timestamp",
+  ]);
+}
+
+function getTicketCalledTimeV7(row = {}) {
+  const direct = getTicketRawValueV7(row, [
+    "called_at",
+    "called at",
+    "last_call_at",
+    "last call at",
+    "last_call_attempt_at",
+    "last call attempt at",
+  ]);
+
+  if (parseInboundDateSafe(direct)) return direct;
+
+  const status = String(row.status || "")
+    .trim()
+    .toUpperCase();
+  if (
+    ["CALLED", "UNLOADING", "WAITING GR", "DONE GR", "COMPLETED"].includes(
+      status,
+    )
+  ) {
+    return getTicketRawValueV7(row, [
+      "start_unloading_at",
+      "waiting_gr_at",
+      "done_gr_at",
+      "handover_grn_at",
+      "completed_at",
+      "updated_at",
+      "register_time",
+      "created_at",
+      "Timestamp",
+    ]);
+  }
+
+  return "";
+}
+
+function getTicketStartUnloadingTimeV7(row = {}) {
+  const direct = getTicketRawValueV7(row, [
+    "start_unloading_at",
+    "start unloading at",
+    "unloading_start_at",
+  ]);
+
+  if (parseInboundDateSafe(direct)) return direct;
+
+  const status = String(row.status || "")
+    .trim()
+    .toUpperCase();
+  if (["UNLOADING", "WAITING GR", "DONE GR", "COMPLETED"].includes(status)) {
+    return getTicketRawValueV7(row, [
+      "waiting_gr_at",
+      "done_gr_at",
+      "handover_grn_at",
+      "completed_at",
+      "updated_at",
+      "called_at",
+      "register_time",
+      "created_at",
+      "Timestamp",
+    ]);
+  }
+
+  return "";
+}
+
+function getTicketWaitingEndV7(row = {}) {
+  const status = String(row.status || "")
+    .trim()
+    .toUpperCase();
+
+  if (status === "COMPLETED") {
+    return getTicketRawValueV7(row, [
+      "handover_grn_at",
+      "handover grn at",
+      "completed_at",
+      "completed at",
+      "updated_at",
+      "updated at",
+    ]);
+  }
+
+  if (status === "EXPIRED") {
+    return getTicketRawValueV7(row, [
+      "expired_at",
+      "expired at",
+      "updated_at",
+      "updated at",
+    ]);
+  }
+
+  return "";
+}
+
+function formatWaitingClockV7(startValue, endValue = "") {
+  const start = parseInboundDateSafe(startValue);
+  if (!start) return "-";
+
+  const end = parseInboundDateSafe(endValue) || new Date();
+  const totalSeconds = Math.max(
+    0,
+    Math.floor((end.getTime() - start.getTime()) / 1000),
+  );
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(seconds).padStart(2, "0"),
+  ].join(":");
+}
+
+function ticketWaitingMarkupV7(row = {}, extraClass = "") {
+  const start = getTicketRegisterTimeV7(row);
+  const end = getTicketWaitingEndV7(row);
+  const status = String(row.status || "")
+    .trim()
+    .toUpperCase();
+
+  return `<span
+    class="live-waiting-cell ${extraClass}"
+    data-live-waiting="1"
+    data-created="${esc(start || "")}"
+    data-completed="${esc(end || "")}"
+    data-status="${esc(status)}"
+  >${esc(formatWaitingClockV7(start, end))}</span>`;
+}
+
 function emptyBox(t) {
   return `<div class="p-6 rounded-lg border border-outline-variant text-on-surface-variant text-center">${esc(t)}</div>`;
 }
@@ -4447,43 +4645,36 @@ function refreshLiveEstimateCells() {
 
 function refreshLiveWaitingCells() {
   document.querySelectorAll('[data-live-waiting="1"]').forEach((el) => {
-    const st = String(el.dataset.status || "").toUpperCase();
+    const status = String(el.dataset.status || "").toUpperCase();
     const created = el.dataset.created || "";
     const completed = el.dataset.completed || "";
 
+    el.textContent = formatWaitingClockV7(created, completed);
+
+    el.classList.remove(
+      "text-tertiary",
+      "text-warning",
+      "text-error",
+      "text-success",
+      "text-on-surface-variant",
+    );
+
     if (!created) {
-      el.textContent = "-";
-      el.classList.remove(
-        "text-tertiary",
-        "text-warning",
-        "text-error",
-        "text-success",
-      );
       el.classList.add("text-on-surface-variant");
-      return;
+    } else if (status === "EXPIRED") {
+      el.classList.add("text-error");
+    } else if (completed) {
+      el.classList.add("text-success");
+    } else {
+      el.classList.add("text-tertiary");
     }
-
-    if (completed) {
-      el.textContent = formatMinutesCompact(
-        minutesBetweenValues(created, completed),
-      );
-      el.classList.remove(
-        "text-tertiary",
-        "text-warning",
-        "text-success",
-        "text-on-surface-variant",
-      );
-      el.classList.toggle("text-error", st.includes("EXPIRED"));
-      el.classList.toggle("text-success", !st.includes("EXPIRED"));
-      return;
-    }
-
-    el.textContent = liveWaitingText(created, "");
   });
 
   if (typeof updateLiveSlaCells === "function") updateLiveSlaCells();
   if (typeof refreshLiveEstimateCells === "function")
     refreshLiveEstimateCells();
+  if (typeof window.wmRefreshLiveSlaCells === "function")
+    window.wmRefreshLiveSlaCells();
 }
 
 function startLiveWaitingTimer() {
@@ -7452,20 +7643,14 @@ function securityFormMatchesRowsForPrint(rows = []) {
         ? `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1" title="Kirim ulang WA manual khusus SPV"><span class="material-symbols-outlined text-base">chat</span>WA Manual</button>`
         : "";
 
-    const waitText =
-      st === "EXPIRED"
-        ? "Expired"
-        : ["WAITING GR", "DONE GR", "COMPLETED"].includes(st)
-          ? "Bongkar selesai"
-          : row.waiting_text ||
-            liveWaitingText(
-              row.created_at,
-              row.waiting_gr_at || row.completed_at,
-            );
+    const waitMarkup = ticketWaitingMarkupV7(
+      row,
+      "font-queue-id text-tertiary mt-1",
+    );
 
     return `<article class="checker-card rounded-2xl border border-outline-variant/40 bg-surface-container/45 p-4 shadow-sm" data-status="${esc(st)}" data-vendor="${esc(String(row.vendor_name || "").toLowerCase())}" data-queue="${esc(String(row.queue_no || "").toLowerCase())}" data-po="${esc(String(row.po_number || "").toLowerCase())}" data-plate="${esc(String(row.plat_number || "").toLowerCase())}">
       <div class="flex items-start justify-between gap-3"><div><div class="font-queue-id text-primary text-2xl">${esc(row.queue_no || "-")}</div><div class="text-[11px] uppercase text-on-surface-variant font-bold mt-1">${esc(row.vendor_name || "-")}</div></div><div class="flex flex-col items-end gap-1">${checkerStatusPill(st)}${isCalled ? callLimitBadge(row) : ""}</div></div>
-      <div class="grid grid-cols-2 gap-2 mt-4 text-xs"><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Plat</div><div class="font-queue-id text-sm mt-1">${esc(row.plat_number || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Gate</div><div class="font-bold text-sm mt-1">${esc(row.gate || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Driver</div><div class="font-bold truncate mt-1">${esc(row.driver_name || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Menunggu</div><div class="font-queue-id text-tertiary mt-1">${esc(waitText)}</div></div></div>
+      <div class="grid grid-cols-2 gap-2 mt-4 text-xs"><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Plat</div><div class="font-queue-id text-sm mt-1">${esc(row.plat_number || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Gate</div><div class="font-bold text-sm mt-1">${esc(row.gate || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Driver</div><div class="font-bold truncate mt-1">${esc(row.driver_name || "-")}</div></div><div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Menunggu</div><div>${waitMarkup}</div></div></div>
       <div class="mt-3 text-xs text-on-surface-variant"><div><b>Fleet:</b> ${esc(row.fleet_type || "-")}</div><div class="truncate"><b>PO:</b> ${esc(row.po_number || "-")}</div>${isUnloading ? `<div><b>Estimasi selesai:</b> ${esc(getEstimatedFinishedAt(row) || row.sla_finished_at || "-")}</div>` : ""}</div>
       <div class="mt-4 flex flex-wrap gap-2">${primaryButton}${callAction}${waButton}</div>
     </article>`;
@@ -8670,7 +8855,10 @@ window.initShader = function initShaderDisabled() {
     }
 
     if (!targetDate) {
-      return `<span class="wm-sla-value is-neutral">WAKTU BELUM TERSEDIA</span>`;
+      if (["WAITING", "CALLED"].includes(status)) {
+        return `<span class="wm-sla-value is-neutral">BELUM MULAI BONGKAR</span>`;
+      }
+      return `<span class="wm-sla-value is-neutral">DATA WAKTU KOSONG</span>`;
     }
 
     const targetMs = targetDate.getTime();
@@ -8708,7 +8896,7 @@ window.initShader = function initShaderDisabled() {
     </div>`;
   }
 
-  function wmRefreshLiveSlaCells() {
+  window.wmRefreshLiveSlaCells = function wmRefreshLiveSlaCells() {
     document
       .querySelectorAll(".wm-stitch-v4 [data-wm-sla-target]")
       .forEach((element) => {
@@ -8724,7 +8912,7 @@ window.initShader = function initShaderDisabled() {
         countdown.classList.toggle("is-minus", difference < 0);
         countdown.classList.toggle("is-running", difference >= 0);
       });
-  }
+  };
 
   function wmSlaExportValue(row = {}) {
     const status = String(row.status || "")
@@ -8743,6 +8931,10 @@ window.initShader = function initShaderDisabled() {
     }
 
     return wmFormatSignedCountdown(targetDate.getTime() - Date.now());
+  }
+
+  function wmWaitingMarkup(row = {}) {
+    return ticketWaitingMarkupV7(row, "wm-waiting-clock");
   }
 
   function wmSlaCountdown(row = {}) {
@@ -8810,6 +9002,7 @@ window.initShader = function initShaderDisabled() {
                 "Register",
                 "Dipanggil",
                 "Mulai Bongkar",
+                "Jam Menunggu",
                 "SLA",
               ]
                 .map((header) => `<th>${esc(header)}</th>`)
@@ -8830,14 +9023,15 @@ window.initShader = function initShaderDisabled() {
                     <td class="wm-mono wm-po">${esc(row.po_number || "-")}</td>
                     <td>${esc(row.fleet_type || "-")}</td>
                     <td class="wm-gate-text">${esc(row.gate || "-")}</td>
-                    <td class="wm-mono">${esc(formatDateTimeShort(wmResolveRegisterDate(row)))}</td>
-                    <td class="wm-mono">${esc(formatDateTimeShort(wmResolveCalledDate(row)))}</td>
-                    <td class="wm-mono">${esc(formatDateTimeShort(wmResolveStartDate(row)))}</td>
+                    <td class="wm-mono">${esc(formatDateTimeShort(getTicketRegisterTimeV7(row)))}</td>
+                    <td class="wm-mono">${esc(formatDateTimeShort(getTicketCalledTimeV7(row)))}</td>
+                    <td class="wm-mono">${esc(formatDateTimeShort(getTicketStartUnloadingTimeV7(row)))}</td>
+                    <td>${wmWaitingMarkup(row)}</td>
                     <td>${wmSlaCountdown(row)}</td>
                   </tr>`;
                 })
                 .join("") ||
-              `<tr><td colspan="12" class="wm-empty-row">Belum ada data pada Output form.</td></tr>`
+              `<tr><td colspan="13" class="wm-empty-row">Belum ada data pada Output form.</td></tr>`
             }
           </tbody>
         </table>
@@ -8872,6 +9066,7 @@ window.initShader = function initShaderDisabled() {
       "Register",
       "Called",
       "Start Unloading",
+      "Jam Menunggu",
       "SLA",
     ];
 
@@ -8884,9 +9079,13 @@ window.initShader = function initShaderDisabled() {
       row.po_number || "",
       row.fleet_type || "",
       row.gate || "",
-      row.register_time || row.created_at || "",
-      row.called_at || "",
-      row.start_unloading_at || "",
+      getTicketRegisterTimeV7(row),
+      getTicketCalledTimeV7(row),
+      getTicketStartUnloadingTimeV7(row),
+      formatWaitingClockV7(
+        getTicketRegisterTimeV7(row),
+        getTicketWaitingEndV7(row),
+      ),
       wmSlaExportValue(row),
     ]);
 
