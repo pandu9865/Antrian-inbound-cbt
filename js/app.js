@@ -8400,15 +8400,19 @@ window.initShader = function initShaderDisabled() {
     const st = String(status || "")
       .trim()
       .toUpperCase();
+
+    // Waiting Monitor menampilkan status backend apa adanya supaya
+    // sama dengan alur operasional lintas role.
     const map = {
-      WAITING: "MENUNGGU",
-      CALLED: "DIPANGGIL",
-      UNLOADING: "BONGKAR",
-      "WAITING GR": "MENUNGGU GR",
-      "DONE GR": "GR SELESAI",
-      COMPLETED: "SELESAI",
-      EXPIRED: "KEDALUWARSA",
+      WAITING: "WAITING",
+      CALLED: "CALLED",
+      UNLOADING: "UNLOADING",
+      "WAITING GR": "WAITING GR",
+      "DONE GR": "DONE GR",
+      COMPLETED: "COMPLETED",
+      EXPIRED: "EXPIRED",
     };
+
     return map[st] || st || "-";
   }
 
