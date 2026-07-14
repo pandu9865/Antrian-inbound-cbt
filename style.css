@@ -31,9 +31,6 @@ html.dark {
   --outline-variant: 67 70 85;
   --success: 74 222 128;
   --warning: 251 191 36;
-  --shader-opacity: 0.8;
-  --shader-filter: saturate(1) brightness(1);
-  --shader-blend: normal;
 }
 html.light {
   color-scheme: light;
@@ -61,25 +58,14 @@ html.light {
   --outline-variant: 203 213 225;
   --success: 22 163 74;
   --warning: 217 119 6;
-  --shader-opacity: 0.24;
-  --shader-filter: saturate(1.25) brightness(1.55);
-  --shader-blend: multiply;
 }
 body {
   background: rgb(var(--background));
   color: rgb(var(--on-surface));
 }
-#shader-bg {
-  opacity: var(--shader-opacity) !important;
-  filter: var(--shader-filter);
-  mix-blend-mode: var(--shader-blend);
-  transition:
-    opacity 0.35s ease,
-    filter 0.35s ease;
-}
 .glass-card {
   background: rgba(21, 32, 49, 0.64);
-  backdrop-filter: blur(14px);
+
   border: 1px solid rgba(67, 70, 85, 0.42);
   transition:
     background 0.35s ease,
@@ -92,16 +78,7 @@ body {
   box-shadow: 0 16px 45px rgba(15, 23, 42, 0.08);
 }
 .status-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  animation: none !important;
 }
 .calling-effect {
   animation: calling 0.5s ease-out;
@@ -430,5 +407,34 @@ body {
   [aria-disabled="true"] {
     pointer-events: none !important;
     opacity: 0.65;
+  }
+}
+
+/* ==========================================================================
+   MODE RINGAN — TANPA LATAR BERGERAK / BLUR GPU
+   ========================================================================== */
+#shader-bg,
+#shader-canvas {
+  display: none !important;
+}
+
+.glass-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.status-pulse {
+  animation: none !important;
+}
+
+/* Perangkat yang meminta pengurangan gerakan. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

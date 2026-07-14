@@ -5062,59 +5062,6 @@ function demoDashboard() {
   };
 }
 
-function initShader() {
-  const canvas = document.getElementById("shader-canvas");
-  if (!canvas) return;
-  const gl =
-    canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-  if (!gl) return;
-  function sync() {
-    const w = canvas.clientWidth || 1280,
-      h = canvas.clientHeight || 720;
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    }
-  }
-  if (typeof ResizeObserver !== "undefined")
-    new ResizeObserver(sync).observe(canvas);
-  sync();
-  const vs = `attribute vec2 a_position;varying vec2 v_texCoord;void main(){v_texCoord=a_position*0.5+0.5;gl_Position=vec4(a_position,0.0,1.0);}`;
-  const fs = `precision highp float;uniform float u_time;uniform vec2 u_resolution;varying vec2 v_texCoord;float sdRoundRect(vec2 p,vec2 b,float r){vec2 d=abs(p)-b+r;return min(max(d.x,d.y),0.0)+length(max(d,0.0))-r;}void main(){vec2 uv=v_texCoord;vec2 p=(uv*2.0-1.0);p.x*=u_resolution.x/u_resolution.y;float d=length(p);vec3 bg=mix(vec3(0.03,0.08,0.15),vec3(0.01,0.02,0.05),d);float logo=0.0;for(float i=0.0;i<3.0;i++){float t=u_time*(0.5+i*0.2);vec2 off=vec2(sin(t+i),cos(t*0.8+i))*0.4;vec2 lp=p-off;float a=t*0.5;lp=mat2(cos(a),-sin(a),sin(a),cos(a))*lp;float box=sdRoundRect(lp,vec2(0.15,0.15),0.02);logo+=0.01/abs(box+0.01*sin(u_time*2.0+i));}vec3 finalColor=bg+vec3(0.15,0.4,0.9)*logo;float stream=0.0;for(float i=0.0;i<5.0;i++){float row=fract(uv.y+u_time*(0.1+i*0.05)+i*0.2);float line=smoothstep(0.01,0.0,abs(row-0.5));stream+=line*0.1*(0.5+0.5*sin(uv.x*10.0+u_time));}finalColor+=vec3(0.4,0.6,1.0)*stream;gl_FragColor=vec4(finalColor,1.0);}`;
-  function sh(type, src) {
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    return s;
-  }
-  const prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
-  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
-  gl.linkProgram(prog);
-  gl.useProgram(prog);
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
-    gl.STATIC_DRAW,
-  );
-  const pos = gl.getAttribLocation(prog, "a_position");
-  gl.enableVertexAttribArray(pos);
-  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
-  const uTime = gl.getUniformLocation(prog, "u_time"),
-    uRes = gl.getUniformLocation(prog, "u_resolution");
-  function render(t) {
-    if (typeof ResizeObserver === "undefined") sync();
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.uniform1f(uTime, t * 0.001);
-    gl.uniform2f(uRes, canvas.width, canvas.height);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    requestAnimationFrame(render);
-  }
-  render(0);
-}
-
 // Cibitung gate count normalization
 try {
   state.options.gate = getCibitungGateOptions();
@@ -5265,7 +5212,7 @@ function checkerSectionTabs() {
     ["selesai", "Selesai Unloading", counts.selesai, "task_alt"],
   ];
 
-  return `<div class="sticky top-0 z-20 bg-surface/80 backdrop-blur-xl border border-outline-variant/40 rounded-2xl p-2 mb-4">
+  return `<div class="sticky top-0 z-20 bg-surface/80 border border-outline-variant/40 rounded-2xl p-2 mb-4">
     <div class="grid grid-cols-3 gap-2">
       ${tabs
         .map(([key, label, count, icon]) => {
@@ -7801,3 +7748,9 @@ function securityFormMatchesRowsForPrint(rows = []) {
     true,
   );
 })();
+
+/* Mode ringan: latar WebGL/shader dinonaktifkan permanen. */
+window.initShader = function initShaderDisabled() {
+  const shader = document.getElementById("shader-bg");
+  if (shader) shader.remove();
+};

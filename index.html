@@ -86,20 +86,10 @@
   <body
     class="bg-background text-on-surface font-body-md overflow-hidden transition-colors duration-500"
   >
-    <div
-      id="shader-bg"
-      class="fixed inset-0 z-0 pointer-events-none opacity-80"
-    >
-      <canvas
-        id="shader-canvas"
-        class="absolute inset-0 w-full h-full"
-      ></canvas>
-    </div>
-
     <div class="relative z-10 flex h-screen overflow-hidden">
       <aside
         id="sidebar-panel"
-        class="bg-surface-container-lowest/80 backdrop-blur-xl border-r border-outline-variant w-64 h-screen flex-col py-4 gap-2 hidden md:flex transition-all duration-300"
+        class="bg-surface-container-lowest/80 border-r border-outline-variant w-64 h-screen flex-col py-4 gap-2 hidden md:flex transition-all duration-300"
       >
         <div class="px-6 mb-8">
           <h1
@@ -157,7 +147,7 @@
 
       <main class="flex-1 flex flex-col overflow-hidden">
         <header
-          class="flex justify-between items-center w-full px-container-padding h-row-height-md bg-surface/50 backdrop-blur-md border-b border-outline-variant z-20"
+          class="flex justify-between items-center w-full px-container-padding h-row-height-md bg-surface/50 border-b border-outline-variant z-20"
         >
           <div class="flex items-center gap-3 min-w-0">
             <button
@@ -219,7 +209,7 @@
 
         <div
           id="mobile-menu-bar"
-          class="md:hidden bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant px-3 py-2 overflow-x-auto"
+          class="md:hidden bg-surface-container-lowest/80 border-b border-outline-variant px-3 py-2 overflow-x-auto"
         >
           <div id="mobile-nav" class="flex gap-2 min-w-max">
             <button data-page="spv_dashboard" class="mobile-nav-btn">
