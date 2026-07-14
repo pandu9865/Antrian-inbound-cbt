@@ -1419,7 +1419,15 @@ function splitPoItemsByPlate(poItems = [], plateCount = 1) {
 }
 
 async function submitSecurity(e) {
-  e.preventDefault();
+  e?.preventDefault?.();
+
+  // Security tidak boleh tersimpan dari Enter, scanner suffix Enter,
+  // implicit browser submit, atau event form lain.
+  // Hanya explicitSecuritySubmit() dari tombol Buat Nomor yang diizinkan.
+  if (!e || e.explicitSecuritySubmit !== true) {
+    console.warn("Blocked implicit Security submit");
+    return;
+  }
 
   if (securitySubmitBusy) {
     showToast("Submit sedang diproses, tunggu sebentar.");
@@ -2324,7 +2332,15 @@ async function markDriverCallFailedFromKey(encodedKey = "", btn = null) {
  * ========================================================================== */
 
 async function submitSecurity(e) {
-  e.preventDefault();
+  e?.preventDefault?.();
+
+  // Security tidak boleh tersimpan dari Enter, scanner suffix Enter,
+  // implicit browser submit, atau event form lain.
+  // Hanya explicitSecuritySubmit() dari tombol Buat Nomor yang diizinkan.
+  if (!e || e.explicitSecuritySubmit !== true) {
+    console.warn("Blocked implicit Security submit");
+    return;
+  }
 
   if (securitySubmitBusy) {
     showToast("Submit sedang diproses, tunggu sebentar.");

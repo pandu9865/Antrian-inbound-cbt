@@ -1250,7 +1250,7 @@ function pageDaftar() {
           <span class="material-symbols-outlined">sync</span>Auto lookup PO
         </div>
       </div>
-      <form id="security-form" onsubmit="submitSecurity(event)">
+      <form id="security-form" onsubmit="event.preventDefault(); return false;">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${vendorCustomSelectInput(lookup?.summary?.vendor_name || "")}
           ${poMultiSelectInput(lookup?.summary?.po_number || "")}
@@ -1277,7 +1277,7 @@ function pageDaftar() {
         <p class="form-help mt-3">Catatan: Jika 1 plat berisi banyak PO dengan vendor yang sama, Checker hanya tampil 1 baris karena 1 plat = 1 mobil. Jika input banyak plat, data dipecah per plat dan nomor antrian mengikuti jumlah plat yang diregister.</p>
         ${datalists()}
         <div class="mt-6 flex flex-col sm:flex-row gap-3">
-          <button id="security-submit-btn" class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="submit">
+          <button id="security-submit-btn" class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="button" onclick="explicitSecuritySubmit(this)">
             <span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span>
           </button>
           <button type="button" onclick="printSecurityTickets()" class="thin-tab rounded-lg px-6 py-3 font-bold flex items-center justify-center gap-2">
@@ -5980,7 +5980,7 @@ function pageDaftar() {
           <span class="material-symbols-outlined">sync</span>Auto lookup PO
         </div>
       </div>
-      <form id="security-form" onsubmit="submitSecurity(event)">
+      <form id="security-form" onsubmit="event.preventDefault(); return false;">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${vendorCustomSelectInput(lookup?.summary?.vendor_name || "")}
           ${poMultiSelectInput(lookup?.summary?.po_number || "")}
@@ -5998,7 +5998,7 @@ function pageDaftar() {
         <p class="form-help mt-3"><b>Logic baru:</b> 1 plat = 1 mobil = 1 fleet type = 1 ticket/antrian. Jika input banyak kendaraan, PO akan dibagi berurutan per kendaraan.</p>
         ${datalists()}
         <div class="mt-6 flex flex-col sm:flex-row gap-3">
-          <button id="security-submit-btn" class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="submit"><span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span></button>
+          <button id="security-submit-btn" class="bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" type="button" onclick="explicitSecuritySubmit(this)"><span class="material-symbols-outlined">confirmation_number</span><span id="security-submit-text">Buat Nomor</span></button>
           <button type="button" onclick="printSecurityTickets()" class="thin-tab rounded-lg px-6 py-3 font-bold flex items-center justify-center gap-2"><span class="material-symbols-outlined">print</span>Print Nomor / QR</button>
         </div>
       </form>
@@ -7705,4 +7705,96 @@ function securityFormMatchesRowsForPrint(rows = []) {
       badgeClass,
     };
   };
+})();
+
+/* ==========================================================================
+ * SECURITY BUTTON-ONLY SUBMIT GUARD
+ * Prevents accidental save/print/navigation when:
+ * - pressing Enter / Next / Done on mobile keyboard,
+ * - scanner sends Enter,
+ * - browser performs implicit form submit,
+ * - focus changes inside custom dropdown.
+ * Only the real "Buat Nomor" button may call submitSecurity.
+ * ========================================================================== */
+(function installSecurityButtonOnlySubmitGuard() {
+  if (window.__securityButtonOnlySubmitGuardInstalled) return;
+  window.__securityButtonOnlySubmitGuardInstalled = true;
+
+  let explicitSubmitRunning = false;
+
+  window.explicitSecuritySubmit = async function explicitSecuritySubmit(
+    button,
+  ) {
+    const form =
+      button?.closest?.("#security-form") ||
+      document.getElementById("security-form");
+
+    if (!form) {
+      showToast?.("Form Security tidak ditemukan.");
+      return;
+    }
+
+    if (explicitSubmitRunning || window.securitySubmitBusy) {
+      showToast?.("Submit sedang diproses, tunggu sebentar.");
+      return;
+    }
+
+    explicitSubmitRunning = true;
+    form.dataset.explicitSecuritySubmit = "1";
+    button.dataset.explicitSecuritySubmit = "1";
+
+    const safeEvent = {
+      target: form,
+      currentTarget: form,
+      submitter: button,
+      explicitSecuritySubmit: true,
+      preventDefault() {},
+      stopPropagation() {},
+    };
+
+    try {
+      if (typeof window.submitSecurity === "function") {
+        await window.submitSecurity(safeEvent);
+      } else if (typeof submitSecurity === "function") {
+        await submitSecurity(safeEvent);
+      } else {
+        throw new Error("Function submitSecurity tidak ditemukan");
+      }
+    } catch (err) {
+      console.error("Explicit Security submit failed", err);
+      showToast?.("Submit Security gagal: " + (err?.message || err));
+    } finally {
+      delete form.dataset.explicitSecuritySubmit;
+      delete button.dataset.explicitSecuritySubmit;
+      explicitSubmitRunning = false;
+    }
+  };
+
+  // Enter pada input hanya untuk pindah/finalisasi keyboard, bukan menyimpan form.
+  document.addEventListener(
+    "keydown",
+    function blockImplicitSecurityEnter(event) {
+      const form = event.target?.closest?.("#security-form");
+      if (!form || event.key !== "Enter") return;
+
+      // Textarea tetap boleh membuat baris baru.
+      if (event.target?.tagName === "TEXTAREA") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
+
+  // Lapisan terakhir: semua native submit Security selalu diblokir.
+  document.addEventListener(
+    "submit",
+    function blockNativeSecuritySubmit(event) {
+      if (event.target?.id !== "security-form") return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+    },
+    true,
+  );
 })();
