@@ -7754,3 +7754,242 @@ window.initShader = function initShaderDisabled() {
   const shader = document.getElementById("shader-bg");
   if (shader) shader.remove();
 };
+
+/* ==========================================================================
+ * MOBILE TAP-TO-FOCUS GUARD
+ * Tujuan:
+ * - Geser/scroll di atas input tidak membuka keyboard.
+ * - Geser di area Vendor/PO tidak dianggap klik.
+ * - Keyboard hanya muncul setelah tap pendek tanpa perpindahan jari.
+ * ========================================================================== */
+(function installMobileTapToFocusGuard() {
+  if (window.__mobileTapToFocusGuardInstalled) return;
+  window.__mobileTapToFocusGuardInstalled = true;
+
+  const MOVE_LIMIT_PX = 12;
+  let active = null;
+
+  function isTouchLikeDevice() {
+    return (
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      Number(navigator.maxTouchPoints || 0) > 0
+    );
+  }
+
+  function isOperationalField(element) {
+    if (!element || !element.matches) return false;
+    if (!element.closest("#page-root")) return false;
+
+    return element.matches(
+      [
+        'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="file"])',
+        "textarea",
+      ].join(","),
+    );
+  }
+
+  function rememberFieldState(field) {
+    return {
+      field,
+      startX: 0,
+      startY: 0,
+      moved: false,
+      originalReadOnly: !!field.readOnly,
+      originalInputMode: field.getAttribute("inputmode"),
+      wasFocused: document.activeElement === field,
+    };
+  }
+
+  function temporarilyBlockKeyboard(item) {
+    const field = item?.field;
+    if (!field || item.wasFocused) return;
+
+    field.readOnly = true;
+    field.setAttribute("inputmode", "none");
+    field.dataset.mobileKeyboardGuard = "1";
+  }
+
+  function restoreFieldState(item) {
+    const field = item?.field;
+    if (!field) return;
+
+    field.readOnly = item.originalReadOnly;
+
+    if (item.originalInputMode === null) {
+      field.removeAttribute("inputmode");
+    } else {
+      field.setAttribute("inputmode", item.originalInputMode);
+    }
+
+    delete field.dataset.mobileKeyboardGuard;
+  }
+
+  function markMoved(clientX, clientY) {
+    if (!active) return;
+
+    const dx = Number(clientX || 0) - active.startX;
+    const dy = Number(clientY || 0) - active.startY;
+
+    if (Math.hypot(dx, dy) > MOVE_LIMIT_PX) {
+      active.moved = true;
+
+      // Kalau browser sempat memberi fokus saat mulai menggeser, tutup lagi.
+      if (
+        active.field &&
+        document.activeElement === active.field &&
+        !active.wasFocused
+      ) {
+        active.field.blur();
+      }
+    }
+  }
+
+  function finishGesture(clientX, clientY) {
+    if (!active) return;
+
+    markMoved(clientX, clientY);
+    const item = active;
+    active = null;
+
+    restoreFieldState(item);
+
+    if (item.moved || item.wasFocused) return;
+
+    // Tap pendek: baru izinkan fokus dan keyboard.
+    setTimeout(() => {
+      if (!document.body.contains(item.field)) return;
+
+      try {
+        item.field.focus({ preventScroll: true });
+      } catch (err) {
+        item.field.focus();
+      }
+
+      if (
+        typeof item.field.setSelectionRange === "function" &&
+        item.field.value
+      ) {
+        const end = String(item.field.value).length;
+        try {
+          item.field.setSelectionRange(end, end);
+        } catch (err) {}
+      }
+    }, 0);
+  }
+
+  if ("PointerEvent" in window) {
+    document.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (
+          !isTouchLikeDevice() ||
+          (event.pointerType &&
+            event.pointerType !== "touch" &&
+            event.pointerType !== "pen") ||
+          !isOperationalField(event.target)
+        ) {
+          return;
+        }
+
+        active = rememberFieldState(event.target);
+        active.pointerId = event.pointerId;
+        active.startX = event.clientX;
+        active.startY = event.clientY;
+        temporarilyBlockKeyboard(active);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "pointermove",
+      (event) => {
+        if (!active || active.pointerId !== event.pointerId) return;
+        markMoved(event.clientX, event.clientY);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "pointerup",
+      (event) => {
+        if (!active || active.pointerId !== event.pointerId) return;
+        finishGesture(event.clientX, event.clientY);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      "pointercancel",
+      () => {
+        if (!active) return;
+        restoreFieldState(active);
+        active = null;
+      },
+      true,
+    );
+  } else {
+    document.addEventListener(
+      "touchstart",
+      (event) => {
+        if (
+          !isTouchLikeDevice() ||
+          event.touches.length !== 1 ||
+          !isOperationalField(event.target)
+        ) {
+          return;
+        }
+
+        const touch = event.touches[0];
+        active = rememberFieldState(event.target);
+        active.startX = touch.clientX;
+        active.startY = touch.clientY;
+        temporarilyBlockKeyboard(active);
+      },
+      { capture: true, passive: true },
+    );
+
+    document.addEventListener(
+      "touchmove",
+      (event) => {
+        if (!active || event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        markMoved(touch.clientX, touch.clientY);
+      },
+      { capture: true, passive: true },
+    );
+
+    document.addEventListener(
+      "touchend",
+      (event) => {
+        if (!active) return;
+        const touch = event.changedTouches?.[0];
+        finishGesture(
+          touch ? touch.clientX : active.startX,
+          touch ? touch.clientY : active.startY,
+        );
+      },
+      { capture: true, passive: true },
+    );
+
+    document.addEventListener(
+      "touchcancel",
+      () => {
+        if (!active) return;
+        restoreFieldState(active);
+        active = null;
+      },
+      { capture: true, passive: true },
+    );
+  }
+
+  // Kalau scroll benar-benar berjalan, pastikan field yang baru tersentuh tidak aktif.
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (!active || !active.field || active.wasFocused) return;
+      active.moved = true;
+      if (document.activeElement === active.field) active.field.blur();
+    },
+    true,
+  );
+})();

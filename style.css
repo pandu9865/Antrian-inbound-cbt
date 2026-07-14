@@ -438,3 +438,22 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   SENTUHAN HP — GESER FORM TANPA MEMBUKA KEYBOARD
+   ========================================================================== */
+@media (pointer: coarse) {
+  #page-root input,
+  #page-root textarea,
+  #page-root select,
+  #page-root .form-input,
+  #page-root .form-select {
+    touch-action: pan-y;
+  }
+
+  /* Hindari efek tap tertahan yang terasa seperti klik saat sedang scroll. */
+  #page-root .form-input,
+  #page-root .form-select {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
