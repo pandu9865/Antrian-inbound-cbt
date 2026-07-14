@@ -3826,7 +3826,14 @@ function openPoDropdown() {
 
 function closePoDropdownSoon() {
   setTimeout(() => {
-    document.getElementById("po-dropdown")?.classList.add("hidden");
+    const dropdown = document.getElementById("po-dropdown");
+    if (!dropdown) return;
+
+    // Jangan tutup ketika user sedang memilih checkbox di dalam dropdown.
+    if (window.__poDropdownInteracting) return;
+    if (dropdown.contains(document.activeElement)) return;
+
+    dropdown.classList.add("hidden");
   }, 280);
 }
 
@@ -4006,7 +4013,10 @@ function poMultiSelectInput(value = "") {
         <input id="po-search-input" type="text" class="min-w-[150px] sm:min-w-[220px] flex-1 bg-transparent border-0 outline-none focus:ring-0 p-1 text-on-surface placeholder:text-on-surface-variant/70 text-sm sm:text-base" placeholder="Cari PO sesuai vendor..." autocomplete="off" onfocus="openPoDropdown()" onblur="closePoDropdownSoon()" oninput="handlePoSearchInput(this)" onkeydown="handlePoSearchKeydown(event)" />
         <button type="button" class="thin-tab rounded-md px-3 py-2 text-[11px] font-extrabold shrink-0" onclick="event.stopPropagation(); addPoFromSearch()">Tambah</button>
       </div>
-      <div id="po-dropdown" class="hidden absolute z-50 left-0 right-0 mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl max-h-[60vh] sm:max-h-[320px] overflow-y-auto p-2">
+      <div id="po-dropdown"
+        onpointerdown="window.__poDropdownInteracting=true; setTimeout(()=>window.__poDropdownInteracting=false,500)"
+        onclick="event.stopPropagation()"
+        class="hidden absolute z-50 left-0 right-0 mt-2 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-2xl max-h-[60vh] sm:max-h-[320px] overflow-y-auto p-2">
         <div id="po-dropdown-list"></div>
       </div>
     </div>
@@ -7179,24 +7189,42 @@ function securityFormMatchesRowsForPrint(rows = []) {
     encodedPo,
     checked,
   ) {
+    window.__poDropdownInteracting = true;
+
     const po = poDecode(encodedPo);
     if (checked) window.__poBatchSelection.add(po);
     else window.__poBatchSelection.delete(po);
+
     const btn = document.getElementById("po-batch-add-btn");
     const count = window.__poBatchSelection.size;
     if (btn) {
       btn.disabled = count === 0;
       btn.textContent = count ? `Tambah ${count} PO` : "Pilih PO";
     }
+
+    // Beri waktu sampai event blur/click selesai.
+    setTimeout(() => {
+      window.__poDropdownInteracting = false;
+    }, 450);
   };
 
   window.applyPoBatchSelection = function applyPoBatchSelection() {
     const values = [...window.__poBatchSelection];
     if (!values.length) return;
+
+    window.__poDropdownInteracting = true;
     addPoChoice(values.join(", "));
     window.__poBatchSelection.clear();
-    filterPoDropdown();
-    document.getElementById("po-search-input")?.focus();
+
+    const searchInput = document.getElementById("po-search-input");
+    if (searchInput) searchInput.value = "";
+
+    // Dropdown baru ditutup setelah tombol Tambah PO ditekan.
+    document.getElementById("po-dropdown")?.classList.add("hidden");
+
+    setTimeout(() => {
+      window.__poDropdownInteracting = false;
+    }, 350);
   };
 
   window.filterPoDropdown = function filterPoDropdownBatch() {
@@ -7225,7 +7253,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
         .map((po) => {
           const meta = getPoMeta(po);
           const checked = selectedBatch.has(po);
-          return `<label onpointerdown="event.stopPropagation()" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 grid grid-cols-[auto_1fr_auto] gap-3 items-center border-b border-outline-variant/20 cursor-pointer touch-manipulation">
+          return `<label onpointerdown="window.__poDropdownInteracting=true; event.stopPropagation(); setTimeout(()=>window.__poDropdownInteracting=false,500)" onclick="event.stopPropagation()" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 grid grid-cols-[auto_1fr_auto] gap-3 items-center border-b border-outline-variant/20 cursor-pointer touch-manipulation">
             <input type="checkbox" class="h-5 w-5 accent-primary" ${checked ? "checked" : ""} onchange="togglePoBatchChoice('${poEncode(po)}', this.checked)" />
             <span class="min-w-0"><span class="font-queue-id text-[12px] sm:text-[13px] break-all block">${esc(po)}</span><span class="text-[10px] text-on-surface-variant font-bold block">${esc(meta?.vendor_name || "-")}</span></span>
             <span class="text-[10px] text-primary font-bold">SKU ${esc(meta?.count_po_sku || 0)}</span>
