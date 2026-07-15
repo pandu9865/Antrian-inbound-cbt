@@ -184,6 +184,19 @@ async function fetchOutputFormData() {
   return apiGetV2("output");
 }
 
+// V15.1 FIX:
+// Endpoint output juga membawa master checker dari sheet `inbound mp`.
+// Nilai ini wajib ikut disalin setiap refresh/autosync. Kalau hanya Output form
+// yang disalin, dropdown checker akan kosong walaupun GAS sudah membaca sheet.
+function getInboundMpRowsV15(response = {}, fallback = []) {
+  if (Array.isArray(response?.inboundMp)) return response.inboundMp;
+  if (Array.isArray(response?.inbound_mp)) return response.inbound_mp;
+  if (Array.isArray(response?.data?.inboundMp)) return response.data.inboundMp;
+  if (Array.isArray(response?.data?.inbound_mp))
+    return response.data.inbound_mp;
+  return Array.isArray(fallback) ? fallback : [];
+}
+
 function normalizeFieldKeyV6(value = "") {
   return String(value || "")
     .trim()
@@ -1196,6 +1209,10 @@ async function initApi() {
         table: [],
         tablev2: [],
         outputForm: getOutputFormRows(outputResponse),
+        inboundMp: getInboundMpRowsV15(
+          outputResponse,
+          v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+        ),
       };
     } else {
       v2RawResponse = await fetchV2Data();
@@ -1253,6 +1270,10 @@ async function refreshDashboard() {
         ...v2RawResponse,
         timestamp: outputResponse?.timestamp || new Date().toISOString(),
         outputForm: getOutputFormRows(outputResponse),
+        inboundMp: getInboundMpRowsV15(
+          outputResponse,
+          v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+        ),
       };
       state.dashboard = buildDashboardFromV2(v2RawResponse);
       state.options = state.dashboard.options || state.options;
@@ -2046,6 +2067,10 @@ async function submitChecker(e) {
         ...(v2RawResponse || {}),
         timestamp: outputResponse?.timestamp || new Date().toISOString(),
         outputForm: getOutputFormRows(outputResponse),
+        inboundMp: getInboundMpRowsV15(
+          outputResponse,
+          v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+        ),
       };
       state.dashboard = buildDashboardFromV2(v2RawResponse);
     } catch (refreshErr) {
@@ -2071,6 +2096,10 @@ async function refreshCallMonitorData(renderAfter = false) {
       ...v2RawResponse,
       timestamp: outputResponse?.timestamp || new Date().toISOString(),
       outputForm: getOutputFormRows(outputResponse),
+      inboundMp: getInboundMpRowsV15(
+        outputResponse,
+        v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+      ),
     };
     state.dashboard = buildDashboardFromV2(v2RawResponse);
     state.options = state.dashboard.options || state.options;
@@ -2367,6 +2396,10 @@ async function refreshOutputFormForFreshRow(fallback = {}) {
       status: "success",
       timestamp: outputResponse?.timestamp || new Date().toISOString(),
       outputForm: getOutputFormRows(outputResponse),
+      inboundMp: getInboundMpRowsV15(
+        outputResponse,
+        v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+      ),
     };
     state.dashboard = buildDashboardFromV2(v2RawResponse);
     const key = checkerRowKey(fallback || {});
@@ -3458,6 +3491,10 @@ async function submitSecurity(e) {
         v2RawResponse?.timestamp ||
         new Date().toISOString(),
       outputForm: rows,
+      inboundMp: getInboundMpRowsV15(
+        outputResponse,
+        v2RawResponse?.inboundMp || v2RawResponse?.inbound_mp || [],
+      ),
     };
 
     state.dashboard = buildDashboardFromV2(v2RawResponse);
