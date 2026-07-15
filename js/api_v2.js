@@ -3568,3 +3568,960 @@ async function submitSecurity(e) {
     setTimeout(() => window.startGlobalAutoSyncV11(), 2200);
   });
 })();
+
+/* ==========================================================================
+ * V15 — MULTI-PO OUTPUT + CHECKER PER PO + GR PER PO
+ * ========================================================================== */
+(function installInboundMultiPoV15Api() {
+  window.__inboundMultiPoV15Api = true;
+
+  function responseInboundMpV15(response) {
+    if (Array.isArray(response?.inboundMp)) return response.inboundMp;
+    if (Array.isArray(response?.inbound_mp)) return response.inbound_mp;
+    if (Array.isArray(response?.data?.inboundMp))
+      return response.data.inboundMp;
+    return [];
+  }
+
+  window.startCheckerPoToBackendV15 = function startCheckerPoToBackendV15(
+    body = {},
+  ) {
+    return apiPostV2("startCheckerPo", body);
+  };
+
+  window.doneCheckerPoToBackendV15 = function doneCheckerPoToBackendV15(
+    body = {},
+  ) {
+    return apiPostV2("doneCheckerPo", body);
+  };
+
+  window.doneGrPoToBackendV15 = function doneGrPoToBackendV15(body = {}) {
+    return apiPostV2("doneGrPo", body);
+  };
+
+  window.handoverGrnToBackendV15 = function handoverGrnToBackendV15(body = {}) {
+    return apiPostV2("handoverGrn", body);
+  };
+
+  window.ticketIdentity = function ticketIdentityV15(row = {}) {
+    const ticketPoId = String(
+      row.ticket_po_id || row.raw?.ticket_po_id || "",
+    ).trim();
+    if (ticketPoId) return `ticket-po:${ticketPoId}`;
+
+    const ticketId = String(row.ticket_id || row.raw?.ticket_id || "").trim();
+    const po = String(row.po_number || row.raw?.po_number || "").trim();
+    if (ticketId && po && !po.includes(","))
+      return `ticket-po-fallback:${ticketId}|${po}`.toUpperCase();
+    if (ticketId) return `ticket:${ticketId}`;
+
+    return [
+      "fallback",
+      String(row.queue_no || "").trim(),
+      po,
+      normalizePlateValue(row.plat_number || row["Licence Plate"] || ""),
+    ]
+      .join("|")
+      .toUpperCase();
+  };
+
+  function mapOutputPoRowV15(row = {}, idx = 0) {
+    const status = String(
+      getCell(row, ["status", "Status"], "WAITING") || "WAITING",
+    )
+      .trim()
+      .toUpperCase();
+    const timestamp = getCell(row, ["Timestamp", "timestamp"], "");
+    const created = normalizeOutputDateV7(
+      getCell(row, ["created_at", "created at"]),
+      getCell(row, ["register_time", "register time"]),
+      timestamp,
+    );
+    const registerTime = normalizeOutputDateV7(
+      getCell(row, ["register_time", "register time"]),
+      getCell(row, ["created_at", "created at"]),
+      timestamp,
+    );
+
+    const dateField = (...names) =>
+      normalizeOutputDateV7(getCell(row, names, ""));
+    const plate = normalizePlateValue(
+      getCell(
+        row,
+        ["plat_number", "Licence Plate", "license_plate", "plat number"],
+        "",
+      ),
+    );
+
+    return {
+      source: getCell(row, ["source"], "OUTPUT_FORM"),
+      row_no: idx + 2,
+      ticket_id: getCell(row, ["ticket_id", "ticket id"], ""),
+      ticket_po_id: getCell(row, ["ticket_po_id", "ticket po id"], ""),
+      po_sequence: toNumberV2(getCell(row, ["po_sequence"], idx + 1)),
+      ticket_po_count: toNumberV2(getCell(row, ["ticket_po_count"], 0)),
+      ticket_total_qty: toNumberV2(getCell(row, ["ticket_total_qty"], 0)),
+      ticket_total_sku: toNumberV2(getCell(row, ["ticket_total_sku"], 0)),
+      queue_no: getCell(row, ["queue_no", "queue no"], ""),
+      original_queue_no: getCell(row, ["queue_no", "queue no"], ""),
+      ticket_type: getCell(row, ["ticket_type", "ticket type"], "REG"),
+      slot: String(getCell(row, ["slot"], "3") || "3"),
+      Timestamp: timestamp,
+      created_at: created,
+      register_time: registerTime,
+      called_at: dateField("called_at", "called at", "last_call_at"),
+      start_unloading_at: dateField("start_unloading_at", "start unloading at"),
+      finish_unloading_at: dateField(
+        "finish_unloading_at",
+        "finish unloading at",
+      ),
+      waiting_gr_at: dateField("waiting_gr_at", "waiting gr at"),
+      done_gr_at: dateField("done_gr_at", "done gr at"),
+      handover_grn_at: dateField("handover_grn_at", "handover grn at"),
+      completed_at: dateField(
+        "completed_at",
+        "completed at",
+        "handover_grn_at",
+      ),
+      updated_at: dateField("updated_at", "updated at", "last_call_at"),
+      last_call_at: dateField("last_call_at", "last call at"),
+      last_call_attempt_at: dateField(
+        "last_call_attempt_at",
+        "last call attempt at",
+      ),
+      expired_at: dateField("expired_at", "expired at"),
+      expired_reason: getCell(row, ["expired_reason", "expired reason"], ""),
+      operational_date: getCell(row, ["operational_date"], ""),
+      data_source: getCell(row, ["data_source"], "BACKEND"),
+      vendor_name: getCell(row, ["vendor_name", "Vendor Name"], ""),
+      fleet_type: getCell(
+        row,
+        ["fleet_type", "Vhiecle Type", "Vehicle Type"],
+        "",
+      ),
+      plat_number: plate,
+      driver_name: getCell(row, ["driver_name", "driver name"], ""),
+      phone_number: getCell(row, ["phone_number", "phone number"], ""),
+      ktp_6_digit: getCell(row, ["ktp_6_digit"], ""),
+      po_number: getCell(row, ["po_number", "po", "PO Number"], ""),
+      total_po_qty: toNumberV2(
+        getCell(row, ["total_po_qty", "total_request_quantity"], 0),
+      ),
+      count_po_sku: toNumberV2(getCell(row, ["count_po_sku", "Count SKU"], 0)),
+      actual_quantity: toNumberV2(getCell(row, ["actual_quantity"], 0)),
+      gate: getCell(row, ["gate"], "-") || "-",
+      status,
+      unload_sla: getCell(row, ["unload_sla", "sla_status"], ""),
+      sla_status: getCell(row, ["sla_status", "unload_sla"], ""),
+      sla_target_hours: toNumberV2(getCell(row, ["sla_target_hours"], 0)),
+      sla_finished_at: dateField("sla_finished_at", "SLA Finished At"),
+      inbound_sla_duration: getCell(row, ["inbound_sla_duration"], ""),
+      inbound_sla_minutes: toNumberV2(getCell(row, ["inbound_sla_minutes"], 0)),
+      unloading_duration: getCell(row, ["unloading_duration"], ""),
+      unloading_duration_minutes: toNumberV2(
+        getCell(row, ["unloading_duration_minutes"], 0),
+      ),
+      checker_id: getCell(row, ["checker_id"], ""),
+      checker_name: getCell(row, ["checker_name"], ""),
+      checker_status: String(
+        getCell(row, ["checker_status"], "PENDING") || "PENDING",
+      ).toUpperCase(),
+      checker_started_at: dateField("checker_started_at"),
+      checker_done_at: dateField("checker_done_at"),
+      checker_started_by: getCell(row, ["checker_started_by"], ""),
+      checker_done_by: getCell(row, ["checker_done_by"], ""),
+      checker_duration: getCell(row, ["checker_duration"], ""),
+      checker_duration_minutes: toNumberV2(
+        getCell(row, ["checker_duration_minutes"], 0),
+      ),
+      gr_status: String(
+        getCell(row, ["gr_status"], "PENDING") || "PENDING",
+      ).toUpperCase(),
+      done_gr_by: getCell(row, ["done_gr_by"], ""),
+      gr_wait_duration: getCell(row, ["gr_wait_duration"], ""),
+      gr_wait_minutes: toNumberV2(getCell(row, ["gr_wait_minutes"], 0)),
+      call_count: toNumberV2(getCell(row, ["call_count"], 0)),
+      wa_call_status: getCell(row, ["wa_call_status"], ""),
+      wa_call_sent_at: dateField("wa_call_sent_at"),
+      wa_call_error: getCell(row, ["wa_call_error"], ""),
+      wa_ticket_status: getCell(row, ["wa_ticket_status"], ""),
+      wa_ticket_sent_at: dateField("wa_ticket_sent_at"),
+      wa_ticket_error: getCell(row, ["wa_ticket_error"], ""),
+      wa_ticket_target: getCell(row, ["wa_ticket_target"], ""),
+      wa_handover_status: getCell(row, ["wa_handover_status"], ""),
+      wa_handover_sent_at: dateField("wa_handover_sent_at"),
+      wa_handover_error: getCell(row, ["wa_handover_error"], ""),
+      wa_handover_target: getCell(row, ["wa_handover_target"], ""),
+      raw: row,
+    };
+  }
+
+  function latestDateTextV15(values = []) {
+    const valid = values
+      .map((value) => ({ value, date: parseInboundDateSafe(value) }))
+      .filter((item) => item.date)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+    return valid[0]?.value || "";
+  }
+
+  function earliestDateTextV15(values = []) {
+    const valid = values
+      .map((value) => ({ value, date: parseInboundDateSafe(value) }))
+      .filter((item) => item.date)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    return valid[0]?.value || "";
+  }
+
+  function deriveMasterStatusV15(poRows = []) {
+    if (!poRows.length) return "WAITING";
+    const statuses = poRows.map((row) =>
+      String(row.status || "WAITING").toUpperCase(),
+    );
+    if (statuses.every((status) => status === "COMPLETED")) return "COMPLETED";
+    if (statuses.some((status) => status === "EXPIRED")) return "EXPIRED";
+    if (
+      poRows.every(
+        (row) => String(row.gr_status || "").toUpperCase() === "DONE GR",
+      )
+    ) {
+      return statuses.includes("COMPLETED") ? "COMPLETED" : "DONE GR";
+    }
+    if (
+      poRows.every(
+        (row) => String(row.checker_status || "").toUpperCase() === "DONE",
+      )
+    )
+      return "WAITING GR";
+    if (
+      poRows.some((row) =>
+        ["CHECKING", "DONE"].includes(
+          String(row.checker_status || "").toUpperCase(),
+        ),
+      )
+    )
+      return "CHECKING";
+    if (statuses.some((status) => status === "WAITING CHECKER"))
+      return "WAITING CHECKER";
+    if (statuses.some((status) => status === "UNLOADING")) return "UNLOADING";
+    if (statuses.some((status) => status === "CALLED")) return "CALLED";
+    return statuses[0] || "WAITING";
+  }
+
+  function groupOutputRowsV15(outputRows = []) {
+    const mapped = outputRows.map(mapOutputPoRowV15);
+    const groups = new Map();
+
+    mapped.forEach((row) => {
+      const key =
+        String(row.ticket_id || "").trim() ||
+        [
+          row.queue_no,
+          row.plat_number,
+          row.operational_date ||
+            getOperationalDateKey?.(row.register_time || new Date()),
+        ].join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+
+    return [...groups.values()].map((poRows) => {
+      poRows.sort(
+        (a, b) =>
+          (a.po_sequence || 0) - (b.po_sequence || 0) ||
+          String(a.po_number).localeCompare(String(b.po_number)),
+      );
+      const first = poRows[0];
+      const status = deriveMasterStatusV15(poRows);
+      const poNumbers = poRows.map((row) => row.po_number).filter(Boolean);
+      const checkerDone = poRows.filter(
+        (row) => row.checker_status === "DONE",
+      ).length;
+      const grDone = poRows.filter((row) => row.gr_status === "DONE GR").length;
+      const checkerNames = [
+        ...new Set(poRows.map((row) => row.checker_name).filter(Boolean)),
+      ];
+      const allDoneGr = poRows.length > 0 && grDone === poRows.length;
+      const allCheckerDone = poRows.length > 0 && checkerDone === poRows.length;
+      const totalQty = poRows.reduce(
+        (sum, row) => sum + toNumberV2(row.total_po_qty),
+        0,
+      );
+      const totalSku = poRows.reduce(
+        (sum, row) => sum + toNumberV2(row.count_po_sku),
+        0,
+      );
+      const doneGrAt = allDoneGr
+        ? latestDateTextV15(poRows.map((row) => row.done_gr_at))
+        : "";
+      const completedAt =
+        status === "COMPLETED"
+          ? latestDateTextV15(
+              poRows.map((row) => row.completed_at || row.handover_grn_at),
+            )
+          : "";
+
+      return {
+        ...first,
+        raw: first.raw,
+        po_rows: poRows,
+        ticket_row_count: poRows.length,
+        ticket_po_count:
+          Number(first.ticket_po_count || poRows.length) || poRows.length,
+        po_numbers: poNumbers,
+        po_number: poNumbers.join(", "),
+        total_po_qty: Number(first.ticket_total_qty || totalQty) || totalQty,
+        count_po_sku: Number(first.ticket_total_sku || totalSku) || totalSku,
+        ticket_total_qty:
+          Number(first.ticket_total_qty || totalQty) || totalQty,
+        ticket_total_sku:
+          Number(first.ticket_total_sku || totalSku) || totalSku,
+        status,
+        checker_done_count: checkerDone,
+        checker_total_count: poRows.length,
+        checker_progress: `${checkerDone}/${poRows.length}`,
+        gr_done_count: grDone,
+        gr_total_count: poRows.length,
+        gr_progress: `${grDone}/${poRows.length}`,
+        checker_names: checkerNames,
+        checker_name: checkerNames.join(", "),
+        all_checker_done: allCheckerDone,
+        all_done_gr: allDoneGr,
+        called_at: earliestDateTextV15(poRows.map((row) => row.called_at)),
+        start_unloading_at: earliestDateTextV15(
+          poRows.map((row) => row.start_unloading_at),
+        ),
+        finish_unloading_at: latestDateTextV15(
+          poRows.map((row) => row.finish_unloading_at),
+        ),
+        waiting_gr_at: latestDateTextV15(
+          poRows.map((row) => row.waiting_gr_at),
+        ),
+        done_gr_at: doneGrAt,
+        completed_at: completedAt,
+        handover_grn_at:
+          completedAt ||
+          latestDateTextV15(poRows.map((row) => row.handover_grn_at)),
+        sla_status: allDoneGr
+          ? poRows.some(
+              (row) => String(row.sla_status).toUpperCase() === "LATE",
+            )
+            ? "LATE"
+            : "TERCAPAI"
+          : poRows.some(
+                (row) => String(row.sla_status).toUpperCase() === "LATE",
+              )
+            ? "LATE"
+            : first.start_unloading_at
+              ? "ON PROCESS"
+              : "WAITING START UNLOADING",
+        unload_sla: allDoneGr
+          ? poRows.some(
+              (row) => String(row.sla_status).toUpperCase() === "LATE",
+            )
+            ? "LATE"
+            : "TERCAPAI"
+          : poRows.some(
+                (row) => String(row.sla_status).toUpperCase() === "LATE",
+              )
+            ? "LATE"
+            : first.start_unloading_at
+              ? "ON PROCESS"
+              : "WAITING START UNLOADING",
+      };
+    });
+  }
+
+  window.buildQueueFromOutputForm = function buildQueueFromOutputFormV15(
+    outputRows = [],
+  ) {
+    return groupOutputRowsV15(outputRows);
+  };
+
+  function responseHasOutputV15(response) {
+    return hasOutputFormPayload(response);
+  }
+
+  window.buildDashboardFromV2 = function buildDashboardFromV2V15(
+    response = {},
+  ) {
+    const tableRows = getTableV2Rows(response);
+    const kpiRaw = getKpiRawRows(response);
+    const allOutputRows = getOutputFormRows(response);
+    const inboundMp = responseInboundMpV15(response);
+    v2PoIndex = buildPoIndex(tableRows);
+
+    const currentOp =
+      typeof getOperationalDateKey === "function"
+        ? getOperationalDateKey(new Date())
+        : "";
+    const operationalRows = allOutputRows.filter((row) => {
+      const op =
+        typeof getRowOperationalDateKey === "function"
+          ? getRowOperationalDateKey(row)
+          : String(row.operational_date || "");
+      const status = String(row.status || "WAITING").toUpperCase();
+      const active = !["COMPLETED", "EXPIRED"].includes(status);
+      return !currentOp || op === currentOp || active;
+    });
+
+    const serverHasOutput = responseHasOutputV15(response);
+    const serverQueue = groupOutputRowsV15(operationalRows);
+    const localQueue = serverHasOutput
+      ? []
+      : groupOutputRowsV15(getLocalTickets());
+    if (serverHasOutput) saveLocalTickets([]);
+    const queue = normalizeQueueSequenceBySlot(
+      serverHasOutput
+        ? serverQueue
+        : mergeTicketQueues(serverQueue, localQueue),
+    );
+    const allQueue = groupOutputRowsV15(allOutputRows);
+
+    const summary = buildSummary(kpiRaw, tableRows, queue);
+    const kpis = buildKpis(kpiRaw, tableRows, queue);
+    const options = {
+      ...buildOptionsFromV2(tableRows),
+      inbound_mp: inboundMp,
+      checker_mp: inboundMp,
+      checker_names: inboundMp.map((item) => item.checker_name),
+    };
+
+    const dockMap = {};
+    const gates =
+      typeof getCibitungGateOptions === "function"
+        ? getCibitungGateOptions()
+        : Array.from(
+            { length: 10 },
+            (_, i) => `Dock ${String(i + 1).padStart(2, "0")}`,
+          );
+    gates.forEach((gate) => {
+      dockMap[gate] = { gate, status: "KOSONG", queue_no: "", plat_number: "" };
+    });
+    queue.forEach((ticket) => {
+      if (
+        !["CALLED", "UNLOADING"].includes(
+          String(ticket.status || "").toUpperCase(),
+        )
+      )
+        return;
+      parseGateList(ticket.gate || "").forEach((gate) => {
+        dockMap[gate] = {
+          gate,
+          status: ticket.status,
+          queue_no: ticket.queue_no,
+          plat_number: ticket.plat_number,
+        };
+      });
+    });
+
+    return {
+      timestamp: response.timestamp || new Date().toISOString(),
+      operational_date: currentOp,
+      kpis,
+      summary,
+      queue,
+      history_queue: allQueue,
+      all_queue: allQueue,
+      priority: sortQueueBySlotSequence(
+        queue.filter(
+          (row) =>
+            !["COMPLETED", "EXPIRED"].includes(
+              String(row.status || "").toUpperCase(),
+            ),
+        ),
+      ).slice(0, 8),
+      dock: Object.values(dockMap),
+      report_preview: queue,
+      options,
+      raw: {
+        kpiRaw,
+        tablev2: tableRows,
+        outputForm: operationalRows,
+        outputFormAll: allOutputRows,
+        outputFormOperational: operationalRows,
+        table: Array.isArray(response.table) ? response.table : [],
+        inboundMp,
+      },
+    };
+  };
+
+  function makeTicketPoIdClientV15(ticketId, poNumber, sequence) {
+    const safePo = String(poNumber || "PO")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(-22);
+    return `${ticketId}-PO-${safePo}-${String(sequence || 1).padStart(2, "0")}`;
+  }
+
+  window.submitSecurity = async function submitSecurityMultiPoV15(e) {
+    e?.preventDefault?.();
+    if (!e || e.explicitSecuritySubmit !== true) {
+      console.warn("Blocked implicit Security submit");
+      return;
+    }
+    if (securitySubmitBusy) {
+      showToast("Submit sedang diproses, tunggu sebentar.");
+      return;
+    }
+
+    const form = e.target;
+    if (typeof syncVehicleMultiInput === "function") syncVehicleMultiInput();
+    else if (typeof syncPlateMultiInput === "function") syncPlateMultiInput();
+    if (!validateSecurityForm(form)) return;
+
+    const lookup = lookupPo(true);
+    if (!lookup || !lookup.all_found) {
+      showToast("Semua PO wajib valid dan sesuai Vendor Name.");
+      return;
+    }
+
+    securitySubmitBusy = true;
+    const submitBtn = document.getElementById("security-submit-btn");
+    const submitText = document.getElementById("security-submit-text");
+    if (submitBtn) submitBtn.disabled = true;
+    if (submitText) submitText.textContent = "Menyimpan + kirim WA...";
+
+    try {
+      const base = Object.fromEntries(new FormData(form).entries());
+      const poItems = lookup.items || [];
+      const registeredSet = getRegisteredPoSetApi();
+      const duplicatedPo = poItems
+        .map((item) => item.po_number || item.po_input)
+        .filter((po) => registeredSet.has(normalizeKey(po)));
+      if (duplicatedPo.length) {
+        showToast(`PO sudah daftar: ${duplicatedPo.join(", ")}`);
+        return;
+      }
+
+      const vehicleList =
+        typeof getSecurityVehicleRows === "function"
+          ? getSecurityVehicleRows()
+          : parseMultiPlateValues(base.plat_number).map((plate, index) => ({
+              index,
+              fleet_type: base.fleet_type,
+              plat_number: plate,
+              driver_name: pickMultiValue(
+                parseMultiInputValues(base.driver_name),
+                index,
+              ),
+              phone_number: pickMultiValue(
+                parseAndNormalizePhones(base.phone_number),
+                index,
+              ),
+              ktp_6_digit: base.ktp_6_digit || "",
+            }));
+
+      if (!vehicleList.length) {
+        showToast("Data kendaraan wajib diisi.");
+        return;
+      }
+
+      for (const vehicle of vehicleList) {
+        if (
+          !vehicle.fleet_type ||
+          !vehicle.plat_number ||
+          !vehicle.driver_name ||
+          !vehicle.phone_number
+        ) {
+          showToast(
+            "Setiap kendaraan wajib isi Fleet, Plat, Driver, dan WhatsApp.",
+          );
+          return;
+        }
+        if (!isValidPlate(vehicle.plat_number)) {
+          showToast(`Plat belum valid: ${vehicle.plat_number}`);
+          return;
+        }
+      }
+
+      const poGroups = splitPoItemsByPlate(poItems, vehicleList.length);
+      const registerTime =
+        base.register_time || formatDateTimeLocal(new Date());
+      const currentQueue = state.dashboard?.queue || [];
+      const ticketMasters = [];
+      const outputRows = [];
+
+      vehicleList.forEach((vehicle, vehicleIndex) => {
+        const groupItems = poGroups[vehicleIndex] || poItems;
+        const grouped = sumPoItems(groupItems);
+        const rowSlot =
+          String(base.ticket_type || "").toUpperCase() === "DROP"
+            ? base.slot || grouped.slot || "3"
+            : grouped.slot || base.slot || "3";
+        const ticketId = `IBT-${Date.now().toString(36).toUpperCase()}-${String(vehicleIndex + 1).padStart(2, "0")}`;
+        const queueNo = nextLocalQueueNoFromList(
+          base.ticket_type,
+          rowSlot,
+          currentQueue.concat(ticketMasters),
+        );
+        const totalQty = groupItems.reduce(
+          (sum, item) => sum + toNumberV2(item.total_po_qty),
+          0,
+        );
+        const totalSku = groupItems.reduce(
+          (sum, item) => sum + toNumberV2(item.count_po_sku),
+          0,
+        );
+
+        const master = {
+          ...base,
+          ticket_id: ticketId,
+          queue_no: queueNo,
+          ticket_type: base.ticket_type || "REG",
+          slot: rowSlot,
+          vendor_name: base.vendor_name || grouped.vendor_name || "",
+          fleet_type: vehicle.fleet_type,
+          plat_number: normalizePlateValue(vehicle.plat_number),
+          driver_name: vehicle.driver_name,
+          phone_number: vehicle.phone_number,
+          ktp_6_digit: vehicle.ktp_6_digit || "",
+          status: "WAITING",
+          gate: "-",
+          register_time: registerTime,
+          created_at: registerTime,
+          source: "SECURITY_INPUT",
+          ticket_po_count: groupItems.length,
+          ticket_total_qty: totalQty,
+          ticket_total_sku: totalSku,
+        };
+        ticketMasters.push(master);
+
+        groupItems.forEach((item, poIndex) => {
+          outputRows.push({
+            ...master,
+            ticket_po_id: makeTicketPoIdClientV15(
+              ticketId,
+              item.po_number,
+              poIndex + 1,
+            ),
+            po_sequence: poIndex + 1,
+            po_number: item.po_number || item.po_input || "",
+            total_po_qty: toNumberV2(item.total_po_qty),
+            count_po_sku: toNumberV2(item.count_po_sku),
+            checker_status: "PENDING",
+            gr_status: "PENDING",
+            operational_date:
+              typeof getOperationalDateKey === "function"
+                ? getOperationalDateKey(registerTime)
+                : "",
+            data_source:
+              typeof getManualSecurityEntry === "function" &&
+              getManualSecurityEntry()?.valid
+                ? "MANUAL"
+                : "BACKEND",
+          });
+        });
+      });
+
+      const localRowsV15 = getLocalTickets();
+      localRowsV15.unshift(...outputRows);
+      saveLocalTickets(localRowsV15);
+      showToast("Menyimpan ticket digital dan mengirim WA...");
+      const result = await submitSecurityRowsToBackend(outputRows);
+      const savedRows =
+        Array.isArray(result?.rows) && result.rows.length
+          ? result.rows
+          : outputRows;
+      upsertOutputRowsToRawResponse(savedRows);
+      if (!v2RawResponse) {
+        v2RawResponse = {
+          status: "success",
+          timestamp: new Date().toISOString(),
+          tablev2: [],
+          outputForm: savedRows,
+        };
+      }
+      state.dashboard = buildDashboardFromV2(v2RawResponse);
+      state.options = state.dashboard.options || state.options;
+      state.lastSecurityRows = buildQueueFromOutputForm(savedRows);
+      state.lastCalled = state.lastSecurityRows[0] || ticketMasters[0];
+
+      const waResults = result?.ticket_wa_results || [];
+      const failed = waResults.filter(
+        (item) => String(item.status).toUpperCase() === "FAILED",
+      );
+      const sent = waResults.filter(
+        (item) => String(item.status).toUpperCase() === "SENT",
+      );
+      if (failed.length) {
+        showToast(
+          `${ticketMasters.length} tiket tersimpan. WA terkirim ${sent.length}, gagal ${failed.length}.`,
+        );
+      } else if (sent.length) {
+        showToast(
+          `${ticketMasters.length} tiket tersimpan + WA tiket otomatis terkirim.`,
+        );
+      } else {
+        showToast(
+          `${ticketMasters.length} tiket tersimpan. Cek status WA di detail Waiting List.`,
+        );
+      }
+
+      const queueEl = document.getElementById("new-queue-number");
+      if (queueEl) queueEl.textContent = state.lastCalled?.queue_no || "-";
+
+      // Submit eksplisit selesai: bersihkan pilihan PO/form, tetap di menu Security.
+      state.poLookup = null;
+      window.__poBatchSelection?.clear?.();
+      window.manualSecurityEntryEnabled = false;
+      form.reset?.();
+      renderPage("daftar", false);
+    } catch (error) {
+      console.error(error);
+      showToast(`Gagal membuat tiket: ${error.message}`);
+      try {
+        await refreshDashboard();
+      } catch (refreshError) {
+        console.error(refreshError);
+      }
+    } finally {
+      securitySubmitBusy = false;
+      if (submitBtn) submitBtn.disabled = false;
+      if (submitText) submitText.textContent = "Buat Nomor";
+    }
+  };
+
+  window.submitChecker = async function submitCheckerV15(e) {
+    e.preventDefault();
+    const form = e.target;
+    if (form.dataset.saving === "1") return;
+
+    if (typeof syncCheckerGateInput === "function" && !syncCheckerGateInput()) {
+      showToast("Gate belum valid atau sedang aktif.");
+      return;
+    }
+    if (
+      !validateRequiredFields(form) ||
+      !validatePlateInput(form.plat_number)
+    ) {
+      showToast("Pilih ticket dan isi gate.");
+      return;
+    }
+
+    const body = Object.fromEntries(new FormData(form).entries());
+    body.gate =
+      document.getElementById("checker-gate-value")?.value || body.gate || "";
+    body.plat_number = normalizePlateValue(body.plat_number);
+    body.actor_role = String(getAuthUser?.()?.role || "CHECKER").toUpperCase();
+    body.actor_name =
+      getAuthUser?.()?.display_name ||
+      getAuthUser?.()?.username ||
+      body.actor_role;
+    const requested = String(body.status || "CALLED")
+      .trim()
+      .toUpperCase();
+    body.status = requested === "WAITING GR" ? "WAITING CHECKER" : requested;
+    body.updated_at = formatDateTimeLocal(new Date());
+    if (body.status === "CALLED") body.called_at = body.updated_at;
+    if (body.status === "UNLOADING") body.start_unloading_at = body.updated_at;
+    if (body.status === "WAITING CHECKER")
+      body.finish_unloading_at = body.updated_at;
+    if (typeof getOperationalDateKey === "function")
+      body.operational_date = getOperationalDateKey(new Date());
+
+    if (
+      (window.matchMedia?.("(pointer: coarse)")?.matches ||
+        navigator.maxTouchPoints > 0) &&
+      !form.dataset.mobileConfirmed
+    ) {
+      const label =
+        body.status === "CALLED"
+          ? "Panggil driver ke gate?"
+          : body.status === "UNLOADING"
+            ? "Mulai unloading?"
+            : "Selesaikan unloading dan masuk proses checker barang?";
+      if (
+        !confirm(
+          `${label}\n\nQueue: ${body.queue_no || "-"}\nPlat: ${body.plat_number || "-"}`,
+        )
+      )
+        return;
+    }
+
+    form.dataset.saving = "1";
+    setCheckerSubmitButtonState?.("saving", "Menyimpan...");
+    try {
+      const result = await updateCheckerToBackend(body);
+      applyBackendActionResult(result);
+      if (body.status === "CALLED") {
+        const wa = String(result?.auto_wa_status || "").toUpperCase();
+        showToast(
+          wa === "SENT"
+            ? `Panggilan ${result.call_count || 1}/3 tersimpan + WA terkirim.`
+            : `Panggilan tersimpan. WA: ${wa || "CHECK"}.`,
+        );
+      } else if (body.status === "UNLOADING") {
+        showToast("Unloading dimulai. SLA inbound mulai berjalan.");
+      } else {
+        showToast("Unloading selesai. Ticket masuk Checker Barang.");
+      }
+      setTimeout(() => renderPage("checker", false), 200);
+    } catch (error) {
+      console.error(error);
+      showToast(`Checker gagal: ${error.message}`);
+    } finally {
+      form.dataset.saving = "0";
+      updateCheckerStatusPreview?.(body.status);
+    }
+  };
+
+  function actorPayloadV15() {
+    const user = getAuthUser?.() || {};
+    return {
+      actor_role: String(user.role || "").toUpperCase(),
+      actor_name: user.display_name || user.username || user.role || "",
+      actor_username: user.username || "",
+    };
+  }
+
+  window.runCheckerPoActionV15 = async function runCheckerPoActionV15(
+    action,
+    ticket,
+    poIds,
+    checker,
+    btn = null,
+  ) {
+    if (!ticket || !poIds?.length || !checker) {
+      showToast("Pilih nama checker dan minimal satu PO.");
+      return null;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+    }
+    try {
+      const payload = {
+        ticket_id: ticket.ticket_id,
+        queue_no: ticket.original_queue_no || ticket.queue_no,
+        plat_number: ticket.plat_number,
+        operational_date: ticket.operational_date,
+        ticket_po_ids: poIds,
+        checker_id: checker.checker_id || checker.mp_id,
+        checker_name: checker.checker_name,
+        ...actorPayloadV15(),
+      };
+      const result =
+        action === "start"
+          ? await startCheckerPoToBackendV15(payload)
+          : await doneCheckerPoToBackendV15(payload);
+      applyBackendActionResult(result);
+      showToast(
+        action === "start"
+          ? `${poIds.length} PO mulai dikerjakan ${checker.checker_name}.`
+          : `${poIds.length} PO selesai checker.`,
+      );
+      renderPage("checker", false);
+      return result;
+    } catch (error) {
+      console.error(error);
+      showToast(`Proses checker gagal: ${error.message}`);
+      return null;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+      }
+    }
+  };
+
+  window.doneGrPoV15 = async function doneGrPoV15(
+    ticketId,
+    ticketPoId,
+    btn = null,
+  ) {
+    const ticket = (state.dashboard?.queue || []).find(
+      (row) => String(row.ticket_id) === String(ticketId),
+    );
+    if (!ticket) return showToast("Ticket tidak ditemukan.");
+    const po = ticket.po_rows?.find(
+      (row) => String(row.ticket_po_id) === String(ticketPoId),
+    );
+    if (!po) return showToast("PO tidak ditemukan.");
+    if (!confirm(`Done GR untuk PO ${po.po_number || "-"}?`)) return;
+    if (btn) btn.disabled = true;
+    try {
+      const result = await doneGrPoToBackendV15({
+        ticket_id: ticket.ticket_id,
+        ticket_po_id: po.ticket_po_id,
+        po_number: po.po_number,
+        queue_no: ticket.queue_no,
+        plat_number: ticket.plat_number,
+        operational_date: ticket.operational_date,
+        ...actorPayloadV15(),
+      });
+      applyBackendActionResult(result);
+      showToast(
+        result?.all_done_gr
+          ? "Semua PO DONE GR. Ticket siap Handover GRN."
+          : `PO ${po.po_number} selesai GR.`,
+      );
+      renderPage("laporan", false);
+    } catch (error) {
+      console.error(error);
+      showToast(`Done GR gagal: ${error.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  window.handoverGrnTicketV15 = async function handoverGrnTicketV15(
+    ticketId,
+    btn = null,
+  ) {
+    const ticket = (state.dashboard?.queue || []).find(
+      (row) => String(row.ticket_id) === String(ticketId),
+    );
+    if (!ticket) return showToast("Ticket tidak ditemukan.");
+    if (!ticket.all_done_gr)
+      return showToast(
+        `Handover belum bisa. GR selesai ${ticket.gr_done_count || 0}/${ticket.gr_total_count || ticket.po_rows?.length || 0} PO.`,
+      );
+    if (
+      !confirm(
+        `Handover GRN ${ticket.queue_no || "-"}?\n\nWA selesai akan otomatis dikirim ke driver.`,
+      )
+    )
+      return;
+    if (btn) btn.disabled = true;
+    try {
+      const result = await handoverGrnToBackendV15({
+        ticket_id: ticket.ticket_id,
+        queue_no: ticket.queue_no,
+        plat_number: ticket.plat_number,
+        operational_date: ticket.operational_date,
+        ...actorPayloadV15(),
+      });
+      applyBackendActionResult(result);
+      const waStatus = String(
+        result?.auto_handover_wa_status || "",
+      ).toUpperCase();
+      showToast(
+        waStatus === "SENT"
+          ? "Handover selesai + WA otomatis terkirim."
+          : `Handover selesai. WA: ${waStatus || "CHECK"}.`,
+      );
+      renderPage("laporan", false);
+    } catch (error) {
+      console.error(error);
+      showToast(`Handover GRN gagal: ${error.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+
+  window.advanceGrStatusFromKey = async function advanceGrStatusFromKeyV15(
+    encodedKey = "",
+    targetStatus = "",
+    btn = null,
+  ) {
+    const ticket =
+      typeof findCheckerRowByKey === "function"
+        ? findCheckerRowByKey(encodedKey)
+        : null;
+    if (!ticket) return showToast("Ticket tidak ditemukan.");
+    const target = String(targetStatus || "").toUpperCase();
+    if (target === "COMPLETED")
+      return handoverGrnTicketV15(ticket.ticket_id, btn);
+    showToast("Done GR sekarang dilakukan per PO melalui Detail Waiting List.");
+  };
+})();
