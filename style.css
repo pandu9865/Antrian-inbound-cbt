@@ -2491,3 +2491,185 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================================== 
+   V15.2 — SECURITY LOBBY QR + CHECKER SINGLE FORM
+   ========================================================================== */
+body.security-lobby-qr-open-v152 {
+  overflow: hidden !important;
+}
+
+.security-lobby-qr-v152 {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.security-lobby-qr-backdrop-v152 {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.security-lobby-qr-panel-v152 {
+  position: relative;
+  z-index: 1;
+  width: min(1040px, 98vw);
+  max-height: 94dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgb(var(--surface-container-lowest));
+  color: rgb(var(--on-surface));
+  border: 1px solid rgb(var(--outline-variant));
+  border-radius: 24px;
+  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.42);
+}
+
+.security-lobby-qr-head-v152 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid rgb(var(--outline-variant) / 0.5);
+}
+
+.security-lobby-qr-grid-v152 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.security-lobby-ticket-v152 {
+  padding: 18px;
+  background: rgb(var(--surface-container-low) / 0.78);
+  border: 1px solid rgb(var(--outline-variant) / 0.62);
+  border-radius: 18px;
+}
+
+.security-lobby-ticket-top-v152 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.security-lobby-queue-v152 {
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1;
+  font-weight: 900;
+}
+
+.security-lobby-qr-image-wrap-v152 {
+  width: min(260px, 78vw);
+  aspect-ratio: 1;
+  margin: 18px auto 10px;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+}
+
+.security-lobby-qr-image-wrap-v152 img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.security-lobby-scan-label-v152 {
+  text-align: center;
+  color: rgb(var(--primary));
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.security-lobby-ticket-info-v152 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.security-lobby-ticket-info-v152 > div {
+  padding: 10px 11px;
+  background: rgb(var(--surface-container) / 0.58);
+  border: 1px solid rgb(var(--outline-variant) / 0.42);
+  border-radius: 10px;
+}
+
+.security-lobby-ticket-info-v152 span,
+.security-lobby-ticket-info-v152 b {
+  display: block;
+}
+
+.security-lobby-ticket-info-v152 span {
+  color: rgb(var(--on-surface-variant));
+  font-size: 9px;
+  line-height: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.security-lobby-ticket-info-v152 b {
+  margin-top: 3px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.security-lobby-qr-actions-v152 {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgb(var(--outline-variant) / 0.5);
+  background: rgb(var(--surface-container-lowest));
+}
+
+/* Bottom sheet Checker tidak boleh menyimpan lebih dari satu form. */
+#mobile-checker-form-host > form#checker-form ~ form#checker-form {
+  display: none !important;
+}
+
+@media (max-width: 700px) {
+  .security-lobby-qr-v152 {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .security-lobby-qr-panel-v152 {
+    width: 100%;
+    max-height: 96dvh;
+    border-radius: 24px 24px 0 0;
+    border-bottom: 0;
+  }
+
+  .security-lobby-qr-head-v152,
+  .security-lobby-qr-grid-v152,
+  .security-lobby-qr-actions-v152 {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .security-lobby-qr-grid-v152 {
+    grid-template-columns: 1fr;
+  }
+
+  .security-lobby-qr-actions-v152 {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

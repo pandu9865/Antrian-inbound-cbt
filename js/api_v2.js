@@ -2036,24 +2036,7 @@ async function submitChecker(e) {
     if (targetStatus === "CALLED") {
       const freshRow = result?.rows?.[0] || optimisticRow;
       const count = Number(result?.call_count || freshRow.call_count || 1) || 1;
-      const waStatus = String(result?.auto_wa_status || "").toUpperCase();
-      const waMessage = String(result?.auto_wa_message || "").trim();
-
-      if (waStatus === "SENT") {
-        showToast(
-          `Panggilan ${Math.min(count, 3)}/3 tersimpan + WA otomatis terkirim`,
-        );
-      } else if (waStatus === "FAILED") {
-        showToast(
-          `Panggilan ${Math.min(count, 3)}/3 tersimpan, WA gagal: ${waMessage || "provider error"}`,
-        );
-      } else if (waStatus === "DISABLED") {
-        showToast(
-          `Panggilan ${Math.min(count, 3)}/3 tersimpan, WA otomatis nonaktif`,
-        );
-      } else {
-        showToast(`Nomor dipanggil ke monitor TV (${Math.min(count, 3)}/3)`);
-      }
+      showToast(`Nomor dipanggil ke monitor TV (${Math.min(count, 3)}/3)`);
     } else if (targetStatus === "UNLOADING") {
       showToast("Status berubah menjadi UNLOADING");
     } else {
@@ -3186,27 +3169,7 @@ async function submitSecurity(e) {
       applyBackendActionResult(result);
 
       if (target === "COMPLETED") {
-        const waStatus = String(
-          result?.auto_handover_wa_status || "",
-        ).toUpperCase();
-        const waMessage = result?.auto_handover_wa_message || "";
-
-        if (waStatus === "SENT") {
-          showToast(
-            "Handover GRN berhasil. Status COMPLETED dan WA otomatis terkirim.",
-          );
-        } else if (waStatus === "FAILED") {
-          showToast(
-            "Status COMPLETED tersimpan. WA gagal: " +
-              (waMessage || "provider tidak merespons"),
-          );
-        } else if (waStatus === "DISABLED") {
-          showToast(
-            "Status COMPLETED tersimpan. WA otomatis sedang dimatikan.",
-          );
-        } else {
-          showToast("Handover GRN berhasil. Status COMPLETED.");
-        }
+        showToast("Handover GRN berhasil. Status COMPLETED.");
       } else {
         showToast(`${label} berhasil. Status ${target}.`);
       }
@@ -3263,20 +3226,7 @@ async function submitSecurity(e) {
       const fresh = result?.rows?.[0] || row;
       const newCount =
         Number(result?.call_count || fresh.call_count || callCount + 1) || 0;
-      const waStatus = String(result?.auto_wa_status || "").toUpperCase();
-      const waMessage = String(result?.auto_wa_message || "").trim();
-
-      if (waStatus === "SENT") {
-        showToast(
-          `Panggilan ulang ${Math.min(newCount, 3)}/3 + WA otomatis terkirim`,
-        );
-      } else if (waStatus === "FAILED") {
-        showToast(
-          `Panggilan ulang ${Math.min(newCount, 3)}/3 tersimpan, WA gagal: ${waMessage || "provider error"}`,
-        );
-      } else {
-        showToast(`Driver dipanggil ulang (${Math.min(newCount, 3)}/3)`);
-      }
+      showToast(`Driver dipanggil ulang (${Math.min(newCount, 3)}/3)`);
       renderPage("checker", false);
     } catch (err) {
       console.error(err);
@@ -4116,7 +4066,7 @@ async function submitSecurity(e) {
     const submitBtn = document.getElementById("security-submit-btn");
     const submitText = document.getElementById("security-submit-text");
     if (submitBtn) submitBtn.disabled = true;
-    if (submitText) submitText.textContent = "Menyimpan + kirim WA...";
+    if (submitText) submitText.textContent = "Menyimpan tiket...";
 
     try {
       const base = Object.fromEntries(new FormData(form).entries());
@@ -4253,7 +4203,7 @@ async function submitSecurity(e) {
       const localRowsV15 = getLocalTickets();
       localRowsV15.unshift(...outputRows);
       saveLocalTickets(localRowsV15);
-      showToast("Menyimpan ticket digital dan mengirim WA...");
+      showToast("Menyimpan tiket digital...");
       const result = await submitSecurityRowsToBackend(outputRows);
       const savedRows =
         Array.isArray(result?.rows) && result.rows.length
@@ -4273,26 +4223,9 @@ async function submitSecurity(e) {
       state.lastSecurityRows = buildQueueFromOutputForm(savedRows);
       state.lastCalled = state.lastSecurityRows[0] || ticketMasters[0];
 
-      const waResults = result?.ticket_wa_results || [];
-      const failed = waResults.filter(
-        (item) => String(item.status).toUpperCase() === "FAILED",
+      showToast(
+        `${ticketMasters.length} tiket berhasil dibuat. Tampilkan QR ke driver.`,
       );
-      const sent = waResults.filter(
-        (item) => String(item.status).toUpperCase() === "SENT",
-      );
-      if (failed.length) {
-        showToast(
-          `${ticketMasters.length} tiket tersimpan. WA terkirim ${sent.length}, gagal ${failed.length}.`,
-        );
-      } else if (sent.length) {
-        showToast(
-          `${ticketMasters.length} tiket tersimpan + WA tiket otomatis terkirim.`,
-        );
-      } else {
-        showToast(
-          `${ticketMasters.length} tiket tersimpan. Cek status WA di detail Waiting List.`,
-        );
-      }
 
       const queueEl = document.getElementById("new-queue-number");
       if (queueEl) queueEl.textContent = state.lastCalled?.queue_no || "-";
@@ -4303,6 +4236,11 @@ async function submitSecurity(e) {
       window.manualSecurityEntryEnabled = false;
       form.reset?.();
       renderPage("daftar", false);
+      setTimeout(() => {
+        if (typeof showSecurityLobbyQrV152 === "function") {
+          showSecurityLobbyQrV152(state.lastSecurityRows || ticketMasters);
+        }
+      }, 0);
     } catch (error) {
       console.error(error);
       showToast(`Gagal membuat tiket: ${error.message}`);
@@ -4381,12 +4319,7 @@ async function submitSecurity(e) {
       const result = await updateCheckerToBackend(body);
       applyBackendActionResult(result);
       if (body.status === "CALLED") {
-        const wa = String(result?.auto_wa_status || "").toUpperCase();
-        showToast(
-          wa === "SENT"
-            ? `Panggilan ${result.call_count || 1}/3 tersimpan + WA terkirim.`
-            : `Panggilan tersimpan. WA: ${wa || "CHECK"}.`,
-        );
+        showToast(`Panggilan ${result.call_count || 1}/3 tersimpan.`);
       } else if (body.status === "UNLOADING") {
         showToast("Unloading dimulai. SLA inbound mulai berjalan.");
       } else {
@@ -4513,12 +4446,7 @@ async function submitSecurity(e) {
       return showToast(
         `Handover belum bisa. GR selesai ${ticket.gr_done_count || 0}/${ticket.gr_total_count || ticket.po_rows?.length || 0} PO.`,
       );
-    if (
-      !confirm(
-        `Handover GRN ${ticket.queue_no || "-"}?\n\nWA selesai akan otomatis dikirim ke driver.`,
-      )
-    )
-      return;
+    if (!confirm(`Handover GRN ${ticket.queue_no || "-"}?`)) return;
     if (btn) btn.disabled = true;
     try {
       const result = await handoverGrnToBackendV15({
@@ -4529,14 +4457,7 @@ async function submitSecurity(e) {
         ...actorPayloadV15(),
       });
       applyBackendActionResult(result);
-      const waStatus = String(
-        result?.auto_handover_wa_status || "",
-      ).toUpperCase();
-      showToast(
-        waStatus === "SENT"
-          ? "Handover selesai + WA otomatis terkirim."
-          : `Handover selesai. WA: ${waStatus || "CHECK"}.`,
-      );
+      showToast("Handover GRN selesai.");
       renderPage("laporan", false);
     } catch (error) {
       console.error(error);

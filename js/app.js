@@ -7829,12 +7829,8 @@ function securityFormMatchesRowsForPrint(rows = []) {
       }
     }
 
-    // Panggilan Checker mengirim WA otomatis.
-    // Tombol WA manual tetap tersedia, tetapi khusus akun SPV.
-    const waButton =
-      role === "SPV" && checkerActive && !isUnloading
-        ? `<button type="button" onclick="sendDriverWhatsAppFromKey('${key}', this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs inline-flex items-center gap-1" title="Kirim ulang WA manual khusus SPV"><span class="material-symbols-outlined text-base">chat</span>WA Manual</button>`
-        : "";
+    // WA driver dinonaktifkan sementara. Operasional memakai print tiket + QR lobby.
+    const waButton = "";
 
     const waitMarkup = ticketWaitingMarkupV7(
       row,
@@ -7872,7 +7868,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
                     r.created_at,
                     r.waiting_gr_at || r.completed_at,
                   );
-          return `<tr class="hover:bg-primary/5 ${st === "EXPIRED" ? "bg-error/5" : ""}"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3">${role === "SPV" && !terminal ? `<button onclick="sendDriverWhatsAppFromKey('${key}',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs">WA Manual</button>` : "-"}</td>${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}<td class="px-4 py-3 font-bold">${esc(r.call_count || 0)}</td><td class="px-4 py-3 font-queue-id">${esc(wait)}</td><td class="px-4 py-3">${esc(r.total_po_qty ?? "")}</td><td class="px-4 py-3">${esc(r.count_po_sku ?? "")}</td><td class="px-4 py-3">${esc(r.unload_sla ?? r.sla_status ?? "")}</td></tr>`;
+          return `<tr class="hover:bg-primary/5 ${st === "EXPIRED" ? "bg-error/5" : ""}"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${i})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3">-</td>${["created_at", "queue_no", "vendor_name", "fleet_type", "plat_number", "po_number", "gate", "status"].map((k) => `<td class="px-4 py-3 text-sm">${esc(r[k] ?? "")}</td>`).join("")}<td class="px-4 py-3 font-bold">${esc(r.call_count || 0)}</td><td class="px-4 py-3 font-queue-id">${esc(wait)}</td><td class="px-4 py-3">${esc(r.total_po_qty ?? "")}</td><td class="px-4 py-3">${esc(r.count_po_sku ?? "")}</td><td class="px-4 py-3">${esc(r.unload_sla ?? r.sla_status ?? "")}</td></tr>`;
         })
         .join("") ||
       `<tr><td colspan="16" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`
@@ -8444,16 +8440,31 @@ window.initShader = function initShaderDisabled() {
   }
 
   function returnCheckerFormHome() {
-    const form = document.getElementById("checker-form");
-    if (!form) return;
-
+    const host = document.getElementById("mobile-checker-form-host");
     const home = document.getElementById("checker-form-home");
-    if (home) {
+    const hostedForms = host
+      ? [...host.querySelectorAll("form#checker-form")]
+      : [];
+
+    // Auto-sync dapat membuat form baru di halaman ketika form lama masih berada
+    // di bottom sheet. Pertahankan maksimal satu form dan buang salinan stale.
+    const form =
+      hostedForms.at(-1) ||
+      document.querySelector("#checker-desktop-action-panel form#checker-form");
+
+    hostedForms.forEach((item) => {
+      if (item !== form) item.remove();
+    });
+
+    if (home && form) {
+      const duplicateHome = home.querySelector("form#checker-form");
+      if (duplicateHome && duplicateHome !== form) duplicateHome.remove();
       home.appendChild(form);
-    } else if (form.closest("#mobile-checker-action-sheet")) {
-      // Halaman sudah berpindah atau dirender ulang.
+    } else if (form && form.closest("#mobile-checker-action-sheet")) {
       form.remove();
     }
+
+    if (host) host.replaceChildren();
   }
 
   window.closeMobileCheckerActionSheet =
@@ -8491,6 +8502,30 @@ window.initShader = function initShaderDisabled() {
       return;
     }
 
+    // Bersihkan sheet ganda dan form stale sebelum memilih form aktif.
+    const sheets = [
+      ...document.querySelectorAll("#mobile-checker-action-sheet"),
+    ];
+    sheets.slice(1).forEach((item) => item.remove());
+    const sheet = ensureMobileCheckerSheet();
+    const host = document.getElementById("mobile-checker-form-host");
+    const homeForm = document.querySelector(
+      "#checker-desktop-action-panel form#checker-form",
+    );
+    const allForms = [...document.querySelectorAll("form#checker-form")];
+    const form = homeForm || allForms.at(-1) || null;
+
+    allForms.forEach((item) => {
+      if (item !== form) item.remove();
+    });
+    if (host) host.replaceChildren();
+
+    if (!form) {
+      showToast("Form tindakan Checker belum siap.");
+      return;
+    }
+
+    // Pastikan populate mengarah ke satu-satunya #checker-form yang valid.
     if (typeof populateCheckerFormFromRow === "function") {
       populateCheckerFormFromRow(row);
     }
@@ -8504,12 +8539,8 @@ window.initShader = function initShaderDisabled() {
       return;
     }
 
-    const sheet = ensureMobileCheckerSheet();
-    const host = document.getElementById("mobile-checker-form-host");
-    const form = document.getElementById("checker-form");
-
-    if (!host || !form) {
-      showToast("Form tindakan Checker belum siap.");
+    if (!host) {
+      showToast("Panel tindakan Checker belum siap.");
       return;
     }
 
@@ -8535,7 +8566,7 @@ window.initShader = function initShaderDisabled() {
       ].join(" • ");
     }
 
-    host.appendChild(form);
+    host.replaceChildren(form);
     sheet.classList.add("is-open");
     sheet.setAttribute("aria-hidden", "false");
     document.body.classList.add("mobile-checker-action-sheet-open");
@@ -10289,7 +10320,7 @@ window.initShader = function initShaderDisabled() {
 
   window.pageLaporan = function pageLaporanV15() {
     const rows = state.dashboard?.report_preview || [];
-    return `<div class="glass-card rounded-xl p-4 sm:p-6"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6"><div><h3 class="font-headline-md text-headline-md">Waiting List</h3><p class="text-on-surface-variant">Satu kendaraan tampil satu baris. Buka Detail PO untuk Checker dan Done GR per PO. Handover mengirim WA otomatis.</p></div><div class="flex gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div></div>${reportTable(rows)}</div>`;
+    return `<div class="glass-card rounded-xl p-4 sm:p-6"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6"><div><h3 class="font-headline-md text-headline-md">Waiting List</h3><p class="text-on-surface-variant">Satu kendaraan tampil satu baris. Buka Detail PO untuk Checker dan Done GR per PO. Handover GRN dilakukan setelah seluruh PO selesai Done GR.</p></div><div class="flex gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div></div>${reportTable(rows)}</div>`;
   };
   pageLaporan = window.pageLaporan;
 
@@ -10538,4 +10569,124 @@ window.initShader = function initShaderDisabled() {
     showToast(`${detailRows.length} row PO diexport.`);
   };
   exportCsv = window.exportCsv;
+})();
+
+/* ==========================================================================
+ * V15.2 — TIKET LOBBY QR (WA DINONAKTIFKAN SEMENTARA)
+ * - Setelah Security membuat tiket, layar langsung menampilkan QR driver.
+ * - Satu kendaraan tetap satu QR/tiket walaupun Output form satu row per PO.
+ * - Tombol print memakai engine print ticket existing.
+ * ========================================================================== */
+(function installSecurityLobbyQrV152() {
+  if (window.__securityLobbyQrV152Installed) return;
+  window.__securityLobbyQrV152Installed = true;
+
+  function uniqueTicketRowsV152(rows = []) {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const key = String(
+        row.ticket_id || `${row.queue_no || ""}|${row.plat_number || ""}`,
+      ).trim();
+      if (!key || map.has(key)) return;
+      map.set(key, row);
+    });
+    return [...map.values()];
+  }
+
+  window.closeSecurityLobbyQrV152 = function closeSecurityLobbyQrV152() {
+    document.getElementById("security-lobby-qr-v152")?.remove();
+    document.body.classList.remove("security-lobby-qr-open-v152");
+  };
+
+  window.showSecurityLobbyQrV152 = function showSecurityLobbyQrV152(rows = []) {
+    const tickets = uniqueTicketRowsV152(rows);
+    if (!tickets.length) return;
+
+    closeSecurityLobbyQrV152();
+    const modal = document.createElement("div");
+    modal.id = "security-lobby-qr-v152";
+    modal.className = "security-lobby-qr-v152";
+    modal.innerHTML = `
+      <button type="button" class="security-lobby-qr-backdrop-v152" onclick="closeSecurityLobbyQrV152()" aria-label="Tutup tiket QR"></button>
+      <section class="security-lobby-qr-panel-v152" role="dialog" aria-modal="true" aria-labelledby="security-lobby-qr-title-v152">
+        <div class="security-lobby-qr-head-v152">
+          <div>
+            <div class="text-[10px] uppercase tracking-[0.24em] font-extrabold text-primary">Tiket Digital Lobby</div>
+            <h2 id="security-lobby-qr-title-v152" class="text-2xl font-extrabold text-on-surface mt-1">Scan QR untuk pantau antrean</h2>
+            <p class="text-xs text-on-surface-variant mt-1">Arahkan kamera HP driver ke QR. WhatsApp otomatis sedang dinonaktifkan.</p>
+          </div>
+          <button type="button" onclick="closeSecurityLobbyQrV152()" class="thin-tab rounded-full p-2" aria-label="Tutup"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="security-lobby-qr-grid-v152">
+          ${tickets
+            .map((row) => {
+              const trackUrl = makeDriverTrackUrl(row);
+              const qrUrl = qrImageUrl(trackUrl);
+              const parsedPoCount =
+                typeof parsePoNumbers === "function"
+                  ? parsePoNumbers(row.po_number || "").length
+                  : String(row.po_number || "")
+                      .split(/[,;\n|]+/)
+                      .map((item) => item.trim())
+                      .filter(Boolean).length;
+              const poCount =
+                Number(
+                  row.ticket_po_count ||
+                    row.po_rows?.length ||
+                    parsedPoCount ||
+                    1,
+                ) || 1;
+              return `<article class="security-lobby-ticket-v152">
+                <div class="security-lobby-ticket-top-v152">
+                  <div>
+                    <div class="font-queue-id text-primary security-lobby-queue-v152">${esc(row.queue_no || "-")}</div>
+                    <div class="text-xs font-bold text-on-surface-variant mt-1">${esc(row.vendor_name || "-")}</div>
+                  </div>
+                  <span class="inline-flex rounded-full border border-warning/30 bg-warning/10 text-warning px-3 py-1 text-xs font-extrabold">WAITING</span>
+                </div>
+                <div class="security-lobby-qr-image-wrap-v152">
+                  <img src="${esc(qrUrl)}" alt="QR status driver ${esc(row.queue_no || "")}" />
+                </div>
+                <div class="security-lobby-scan-label-v152">SCAN UNTUK BUKA STATUS TIKET</div>
+                <div class="security-lobby-ticket-info-v152">
+                  <div><span>Plat</span><b>${esc(row.plat_number || "-")}</b></div>
+                  <div><span>Driver</span><b>${esc(row.driver_name || "-")}</b></div>
+                  <div><span>Fleet</span><b>${esc(row.fleet_type || "-")}</b></div>
+                  <div><span>Jumlah PO</span><b>${num(poCount)}</b></div>
+                </div>
+              </article>`;
+            })
+            .join("")}
+        </div>
+        <div class="security-lobby-qr-actions-v152">
+          <button type="button" onclick="printSecurityTickets(window.__lastLobbyQrRowsV152 || [])" class="bg-primary-container text-on-primary-container rounded-xl px-5 py-3 font-bold inline-flex items-center justify-center gap-2"><span class="material-symbols-outlined">print</span>Print Tiket / QR</button>
+          <button type="button" onclick="closeSecurityLobbyQrV152()" class="thin-tab rounded-xl px-5 py-3 font-bold">Tutup</button>
+        </div>
+      </section>`;
+
+    window.__lastLobbyQrRowsV152 = tickets;
+    document.body.appendChild(modal);
+    document.body.classList.add("security-lobby-qr-open-v152");
+  };
+
+  function removeWaControlsV152(root = document) {
+    root
+      .querySelectorAll?.(
+        '[onclick*="sendDriverWhatsAppFromKey"], [data-action="send-wa"]',
+      )
+      .forEach((element) => element.remove());
+  }
+
+  document.addEventListener("DOMContentLoaded", () => removeWaControlsV152());
+  const waUiObserverV152 = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) removeWaControlsV152(node);
+      });
+    });
+  });
+  waUiObserverV152.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
 })();
