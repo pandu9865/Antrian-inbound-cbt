@@ -2673,3 +2673,25 @@ body.security-lobby-qr-open-v152 {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================================== 
+   V15.3 — HARD HIDE WA UI + SINGLE CHECKER FORM
+   ========================================================================== */
+[onclick*="sendDriverWhatsAppFromKey"],
+[onclick*="sendDriverWhatsApp"],
+[data-action="send-wa"] {
+  display: none !important;
+}
+
+#mobile-checker-action-sheet.is-open
+  #mobile-checker-form-host
+  > :not(form#checker-form) {
+  display: none !important;
+}
+
+#mobile-checker-action-sheet.is-open
+  #mobile-checker-form-host
+  > form#checker-form
+  ~ form#checker-form {
+  display: none !important;
+}

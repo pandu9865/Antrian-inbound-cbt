@@ -10690,3 +10690,247 @@ window.initShader = function initShaderDisabled() {
     subtree: true,
   });
 })();
+
+/* ==========================================================================
+ * V15.3 — HARD FIX CHECKER MOBILE + REMOVE WA UI
+ * - Tombol WA Manual dihapus dari seluruh frontend, termasuk hasil render lama.
+ * - Bottom sheet Checker hanya boleh memiliki satu #checker-form.
+ * - Mencegah klik ganda membuka / menumpuk form tindakan.
+ * ========================================================================== */
+(function installCheckerMobileHardFixV153() {
+  if (window.__checkerMobileHardFixV153Installed) return;
+  window.__checkerMobileHardFixV153Installed = true;
+
+  const WA_SELECTOR_V153 = [
+    '[onclick*="sendDriverWhatsAppFromKey"]',
+    '[onclick*="sendDriverWhatsApp"]',
+    '[data-action="send-wa"]',
+  ].join(",");
+
+  function isWaControlV153(element) {
+    if (!element || element.nodeType !== 1) return false;
+    if (!element.matches?.('button, a, [role="button"]')) return false;
+
+    const onclick = String(element.getAttribute("onclick") || "").toLowerCase();
+    const action = String(
+      element.getAttribute("data-action") || "",
+    ).toLowerCase();
+    const text = String(element.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    return (
+      onclick.includes("senddriverwhatsapp") ||
+      action === "send-wa" ||
+      text === "wa manual" ||
+      text.startsWith("wa manual ") ||
+      text === "whatsapp manual"
+    );
+  }
+
+  function removeWaControlsV153(root = document) {
+    const candidates = [];
+
+    if (root?.nodeType === 1 && root.matches?.('button, a, [role="button"]')) {
+      candidates.push(root);
+    }
+
+    root
+      ?.querySelectorAll?.(`button, a, [role="button"], ${WA_SELECTOR_V153}`)
+      .forEach((element) => candidates.push(element));
+
+    [...new Set(candidates)].forEach((element) => {
+      if (isWaControlV153(element) || element.matches?.(WA_SELECTOR_V153)) {
+        element.remove();
+      }
+    });
+  }
+
+  function stripWaFromMarkupV153(markup = "") {
+    if (!markup || typeof document === "undefined") return markup;
+    const template = document.createElement("template");
+    template.innerHTML = String(markup);
+    removeWaControlsV153(template.content);
+    return template.innerHTML;
+  }
+
+  // Hapus WA langsung dari HTML card sebelum masuk DOM.
+  const checkerTicketCardBeforeV153 = window.checkerTicketCard;
+  if (typeof checkerTicketCardBeforeV153 === "function") {
+    window.checkerTicketCard = function checkerTicketCardV153(...args) {
+      return stripWaFromMarkupV153(
+        checkerTicketCardBeforeV153.apply(this, args),
+      );
+    };
+    try {
+      checkerTicketCard = window.checkerTicketCard;
+    } catch (error) {
+      // Global binding tidak tersedia; inline handler tetap memakai window.
+    }
+  }
+
+  // WA frontend dinonaktifkan total untuk sementara.
+  window.sendDriverWhatsAppFromKey =
+    async function sendDriverWhatsAppDisabledV153() {
+      showToast?.(
+        "WhatsApp sementara dinonaktifkan. Gunakan tiket print / QR.",
+      );
+      return { status: "disabled" };
+    };
+
+  let checkerCleanupQueuedV153 = false;
+
+  function isCheckerSheetOpenV153() {
+    return !!document
+      .getElementById("mobile-checker-action-sheet")
+      ?.classList.contains("is-open");
+  }
+
+  function enforceSingleCheckerFormV153() {
+    checkerCleanupQueuedV153 = false;
+
+    const sheet = document.getElementById("mobile-checker-action-sheet");
+    const host = document.getElementById("mobile-checker-form-host");
+    const allForms = [...document.querySelectorAll("form#checker-form")];
+
+    if (!allForms.length) return;
+
+    if (sheet && host && isCheckerSheetOpenV153()) {
+      // Form yang sudah berada di host adalah form aktif dan harus dipertahankan.
+      let canonical = host.querySelector("form#checker-form");
+
+      if (!canonical) {
+        canonical =
+          allForms.find((form) =>
+            form.closest("#mobile-checker-action-sheet"),
+          ) ||
+          allForms.find((form) =>
+            form.closest("#checker-desktop-action-panel"),
+          ) ||
+          allForms[0];
+      }
+
+      allForms.forEach((form) => {
+        if (form !== canonical) form.remove();
+      });
+
+      if (canonical) {
+        // Hilangkan wrapper / salinan stale yang mungkin tertinggal akibat auto-sync.
+        if (
+          host.children.length !== 1 ||
+          host.firstElementChild !== canonical
+        ) {
+          host.replaceChildren(canonical);
+        }
+      }
+
+      return;
+    }
+
+    // Saat popup tertutup, halaman juga hanya boleh punya satu form tindakan.
+    if (allForms.length > 1) {
+      const canonical =
+        document.querySelector(
+          "#checker-desktop-action-panel form#checker-form",
+        ) ||
+        allForms.find(
+          (form) => !form.closest("#mobile-checker-action-sheet"),
+        ) ||
+        allForms[0];
+
+      allForms.forEach((form) => {
+        if (form !== canonical) form.remove();
+      });
+    }
+  }
+
+  function queueCheckerCleanupV153() {
+    if (checkerCleanupQueuedV153) return;
+    checkerCleanupQueuedV153 = true;
+    requestAnimationFrame(enforceSingleCheckerFormV153);
+  }
+
+  // Debounce pembukaan popup pada HP agar satu tap tidak diproses dua kali.
+  const openCheckerActionBeforeV153 = window.openCheckerActionFromKey;
+  if (typeof openCheckerActionBeforeV153 === "function") {
+    let lastOpenAtV153 = 0;
+    let lastOpenKeyV153 = "";
+
+    window.openCheckerActionFromKey = function openCheckerActionFromKeyV153(
+      encodedKey = "",
+    ) {
+      const now = Date.now();
+      const key = String(encodedKey || "");
+
+      if (key === lastOpenKeyV153 && now - lastOpenAtV153 < 650) {
+        return;
+      }
+
+      lastOpenAtV153 = now;
+      lastOpenKeyV153 = key;
+
+      // Tutup instance lama sebelum membuka tiket baru.
+      if (isCheckerSheetOpenV153()) {
+        try {
+          window.closeMobileCheckerActionSheet?.();
+        } catch (error) {
+          document
+            .getElementById("mobile-checker-action-sheet")
+            ?.classList.remove("is-open");
+        }
+      }
+
+      const result = openCheckerActionBeforeV153.apply(this, arguments);
+
+      queueCheckerCleanupV153();
+      setTimeout(enforceSingleCheckerFormV153, 50);
+      setTimeout(enforceSingleCheckerFormV153, 250);
+      return result;
+    };
+  }
+
+  // Jika fungsi populate dipanggil oleh markup lama, arahkan ke pembuka popup tunggal.
+  const populateCheckerKeyBeforeV153 = window.populateCheckerFromTicketKey;
+  if (typeof populateCheckerKeyBeforeV153 === "function") {
+    window.populateCheckerFromTicketKey =
+      function populateCheckerFromTicketKeyV153(encodedKey = "") {
+        if (
+          typeof window.openCheckerActionFromKey === "function" &&
+          window.matchMedia?.("(max-width: 1024px)")?.matches
+        ) {
+          return window.openCheckerActionFromKey(encodedKey);
+        }
+        return populateCheckerKeyBeforeV153.apply(this, arguments);
+      };
+    try {
+      populateCheckerFromTicketKey = window.populateCheckerFromTicketKey;
+    } catch (error) {
+      // Abaikan bila binding global tidak writable.
+    }
+  }
+
+  removeWaControlsV153(document);
+  enforceSingleCheckerFormV153();
+
+  const observerV153 = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) removeWaControlsV153(node);
+      });
+    });
+
+    removeWaControlsV153(document);
+    queueCheckerCleanupV153();
+  });
+
+  observerV153.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    removeWaControlsV153(document);
+    enforceSingleCheckerFormV153();
+  });
+})();
