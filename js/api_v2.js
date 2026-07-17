@@ -4976,7 +4976,10 @@ async function submitSecurity(e) {
       return;
     }
 
-    const result = await runCheckerPoActionV16(
+    // V16.6 FIX: function expression `runCheckerPoActionV16` hanya punya
+    // scope di dalam function itu sendiri. Panggil handler yang diekspos di
+    // window supaya tombol Start/Done Checker benar-benar menjalankan request.
+    const result = await window.runCheckerPoActionV15(
       action,
       ticket,
       poIds,
