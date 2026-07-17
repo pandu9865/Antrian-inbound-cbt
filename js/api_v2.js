@@ -158,12 +158,13 @@ async function apiPostV2(action, payload = {}) {
 async function submitSecurityRowsToBackend(rows = []) {
   if (!rows.length) return { rows: [], ticket_wa_results: [] };
 
-  // V17.1: intent WA dibuat eksplisit dari web saat ticket dibuat.
-  // GAS V15/V16 tetap menjadi satu-satunya pengirim agar pesan tidak dobel.
+  // V17.2: WA otomatis dinonaktifkan. Web hanya menyimpan tiket ke Output form.
+  // Backend tetap memiliki hard stop agar registrasi, panggilan, dan handover
+  // tidak mengirim pesan meskipun payload lama masih tersimpan di cache browser.
   return apiPostV2("submitSecurity", {
     rows,
-    send_whatsapp: true,
-    wa_event: "TICKET_CREATED",
+    send_whatsapp: false,
+    wa_event: "DISABLED",
   });
 }
 
@@ -194,28 +195,8 @@ function getTicketWaFeedbackV171(result = {}) {
 }
 
 function buildTicketCreatedToastV171(result = {}, ticketCount = 1) {
-  const feedback = getTicketWaFeedbackV171(result);
   const count = Number(ticketCount || result?.inserted_tickets || 1) || 1;
-  const ticketText = `${count} tiket berhasil dibuat`;
-
-  if (feedback.sent.length) {
-    const targetText = feedback.targets.length
-      ? feedback.targets.join(", ")
-      : "nomor driver";
-    return `${ticketText} • WhatsApp terkirim ke ${targetText} • QR siap`;
-  }
-
-  if (feedback.failed.length) {
-    const message =
-      feedback.failed[0]?.message || "Cek wa_ticket_error pada Output form";
-    return `${ticketText} • WhatsApp gagal: ${message}`;
-  }
-
-  if (feedback.disabled.length) {
-    return `${ticketText} • WhatsApp masih DISABLED di backend`;
-  }
-
-  return `${ticketText} • Status WhatsApp tidak dikembalikan backend. Cek deployment GAS V17.0`;
+  return `${count} tiket berhasil dibuat • WhatsApp nonaktif • QR siap`;
 }
 
 async function updateCheckerToBackend(body = {}) {
