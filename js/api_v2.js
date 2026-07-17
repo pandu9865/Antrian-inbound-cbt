@@ -4818,7 +4818,7 @@ async function submitSecurity(e) {
       return null;
     }
 
-    const lookup = lookupMultiplePoV16(poText, vendorText);
+    const lookup = window.lookupMultiplePo(poText, vendorText);
     state.poLookup = lookup;
     updatePoLookupUi(lookup);
 
