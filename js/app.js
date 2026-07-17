@@ -12198,3 +12198,213 @@ window.initShader = function initShaderDisabled() {
     true,
   );
 })();
+
+/* ==========================================================================
+ * V16.3 — FLEET DESCRIPTION LABEL + FINAL SLA RULE
+ * - Dropdown tetap menyimpan value fleet canonical.
+ * - Deskripsi tampil dalam kurung agar Security tidak salah pilih kendaraan.
+ * - SLA ticket: start UNLOADING sampai seluruh PO dalam satu mobil DONE GR.
+ * ========================================================================== */
+(function installInboundV163FleetSlaPatch() {
+  if (window.__inboundV163FleetSlaInstalled) return;
+  window.__inboundV163FleetSlaInstalled = true;
+
+  const FLEET_NOTES_V16_3 = Object.freeze({
+    "TRONTON/FUSO": "Tronton / Fuso",
+    "WING BOX": "Wing Box",
+    VAN: "Grandmax, Van & Blindvan",
+    "RODA 2": "Motor, Roda 3, Orang jalan kaki",
+    PICKUP: "Pickup",
+    CDD: "Kendaraan roda 6",
+    CDDL: "Kendaraan roda 6 dengan box lebih panjang",
+    CDE: "Kendaraan roda 4",
+    CDEL: "Kendaraan roda 4 dengan box lebih panjang",
+    "L300 BOX": "Traga, truck box kecil",
+    "DROP-OFF": "Barang drop only vendor maupun marketplace",
+    MOBIL: "Semua mobil pribadi",
+  });
+
+  function fleetCanonicalV163(value = "") {
+    return typeof normalizeFleetType === "function"
+      ? normalizeFleetType(value)
+      : String(value || "")
+          .trim()
+          .toUpperCase();
+  }
+
+  window.getFleetNote = function getFleetNoteV163(type) {
+    const safe = fleetCanonicalV163(type);
+    return (
+      FLEET_NOTES_V16_3[safe] || "Pilih tipe kendaraan sesuai kondisi aktual."
+    );
+  };
+  try {
+    getFleetNote = window.getFleetNote;
+  } catch (error) {}
+
+  window.getFleetOptionLabelV163 = function getFleetOptionLabelV163(type) {
+    const safe = fleetCanonicalV163(type);
+    const note = window.getFleetNote(safe);
+    return note ? `${safe} (${note})` : safe;
+  };
+
+  window.vehicleFleetOptionsHtml = function vehicleFleetOptionsHtmlV163(
+    selected = "",
+  ) {
+    const safeSelected = fleetCanonicalV163(selected || getFleetDefaultType());
+    return getFleetTypeOptions()
+      .map((type) => {
+        const value = fleetCanonicalV163(type);
+        return `<option value="${esc(value)}" ${
+          value === safeSelected ? "selected" : ""
+        }>${esc(window.getFleetOptionLabelV163(value))}</option>`;
+      })
+      .join("");
+  };
+  try {
+    vehicleFleetOptionsHtml = window.vehicleFleetOptionsHtml;
+  } catch (error) {}
+
+  window.getInboundSlaHours = function getInboundSlaHoursV163(row = {}) {
+    const fleet = fleetCanonicalV163(
+      row.fleet_type || row["Vhiecle Type"] || "",
+    );
+    const sku =
+      Number(
+        row.ticket_total_sku || row.count_po_sku || row["Count SKU"] || 0,
+      ) || 0;
+
+    if (["TRONTON/FUSO", "WING BOX"].includes(fleet)) return 5;
+
+    // CDDL mengikuti rule CDD, CDEL mengikuti rule CDE.
+    // SKU tepat 40 masuk tier 3 jam (<= 40).
+    if (["CDD", "CDDL", "CDE", "CDEL"].includes(fleet)) {
+      return sku > 40 ? 5 : 3;
+    }
+
+    if (["VAN", "PICKUP", "MOBIL", "L300 BOX"].includes(fleet)) {
+      return 3;
+    }
+
+    if (fleet === "RODA 2") return 2;
+    if (fleet === "DROP-OFF") return 24;
+
+    return 0;
+  };
+  try {
+    getInboundSlaHours = window.getInboundSlaHours;
+  } catch (error) {}
+
+  window.getFleetSlaRuleTextV163 = function getFleetSlaRuleTextV163(type) {
+    const fleet = fleetCanonicalV163(type);
+    if (["TRONTON/FUSO", "WING BOX"].includes(fleet)) return "SLA 5 jam";
+    if (["CDD", "CDDL", "CDE", "CDEL"].includes(fleet)) {
+      return "SLA 3 jam untuk SKU ≤ 40, SLA 5 jam untuk SKU > 40";
+    }
+    if (["VAN", "PICKUP", "MOBIL", "L300 BOX"].includes(fleet)) {
+      return "SLA 3 jam";
+    }
+    if (fleet === "RODA 2") return "SLA 2 jam";
+    if (fleet === "DROP-OFF") return "SLA 24 jam";
+    return "SLA belum tersedia";
+  };
+
+  function decorateFleetSelectV163(selectEl) {
+    if (!selectEl) return;
+    const row = selectEl.closest?.(".vehicle-row") || selectEl.parentElement;
+    if (!row) return;
+
+    let hint = row.querySelector?.("[data-fleet-description-v163]");
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.dataset.fleetDescriptionV163 = "1";
+      hint.className = "mt-1 text-[11px] leading-4 text-on-surface-variant";
+      selectEl.insertAdjacentElement("afterend", hint);
+    }
+
+    const fleet = fleetCanonicalV163(selectEl.value || getFleetDefaultType());
+    hint.textContent = `${window.getFleetNote(fleet)} · ${window.getFleetSlaRuleTextV163(fleet)}`;
+
+    const card = selectEl.closest?.(".vehicle-row");
+    if (card) {
+      let cardNote = card.querySelector("[data-vehicle-fleet-note-v163]");
+      const labelEl = card.querySelector("[data-vehicle-fleet-label]");
+      if (!cardNote && labelEl) {
+        cardNote = document.createElement("div");
+        cardNote.dataset.vehicleFleetNoteV163 = "1";
+        cardNote.className =
+          "mt-1 text-[10px] leading-4 text-center text-on-surface-variant";
+        labelEl.insertAdjacentElement("afterend", cardNote);
+      }
+      if (cardNote) cardNote.textContent = window.getFleetNote(fleet);
+    }
+  }
+
+  function decorateAllFleetSelectsV163(root = document) {
+    root
+      .querySelectorAll?.(
+        'select[data-vehicle-field="fleet_type"], select[name="fleet_type"]',
+      )
+      .forEach(decorateFleetSelectV163);
+  }
+
+  const updateVehicleFleetPreviewBeforeV163 =
+    window.updateVehicleFleetPreview ||
+    (typeof updateVehicleFleetPreview === "function"
+      ? updateVehicleFleetPreview
+      : null);
+
+  window.updateVehicleFleetPreview = function updateVehicleFleetPreviewV163(
+    selectEl,
+  ) {
+    const result = updateVehicleFleetPreviewBeforeV163?.(selectEl);
+    decorateFleetSelectV163(selectEl);
+    return result;
+  };
+  try {
+    updateVehicleFleetPreview = window.updateVehicleFleetPreview;
+  } catch (error) {}
+
+  window.slaRowsLegend = function slaRowsLegendV163() {
+    return `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 text-sm text-on-surface-variant">
+      <div class="font-bold text-on-surface mb-2">Rule SLA Fleet</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div><b>TRONTON/FUSO</b> / <b>WING BOX</b>: 5 jam</div>
+        <div><b>CDD/CDDL/CDE/CDEL</b>: SKU ≤ 40 = 3 jam, SKU &gt; 40 = 5 jam</div>
+        <div><b>VAN/PICKUP/MOBIL/L300 BOX</b>: 3 jam</div>
+        <div><b>RODA 2</b>: 2 jam</div>
+        <div><b>DROP-OFF</b>: 24 jam</div>
+        <div>Durasi: Start Unloading sampai seluruh PO dalam satu mobil DONE GR.</div>
+      </div>
+    </div>`;
+  };
+  try {
+    slaRowsLegend = window.slaRowsLegend;
+  } catch (error) {}
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) return;
+        if (
+          node.matches?.(
+            'select[data-vehicle-field="fleet_type"], select[name="fleet_type"]',
+          )
+        ) {
+          decorateFleetSelectV163(node);
+        }
+        decorateAllFleetSelectsV163(node);
+      });
+    }
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+    decorateAllFleetSelectsV163();
+  } else {
+    document.addEventListener("DOMContentLoaded", () => {
+      observer.observe(document.body, { childList: true, subtree: true });
+      decorateAllFleetSelectsV163();
+    });
+  }
+})();
