@@ -4035,6 +4035,9 @@ function handlePoSearchKeydown(event) {
 }
 
 function openPoDropdown() {
+  const suppressUntil = Number(window.__poDropdownSuppressOpenUntil || 0);
+  if (suppressUntil && performance.now() < suppressUntil) return;
+
   const dd = document.getElementById("po-dropdown");
   if (!dd) return;
   dd.classList.remove("hidden");
@@ -7598,19 +7601,34 @@ function securityFormMatchesRowsForPrint(rows = []) {
     }, 450);
   };
 
-  window.applyPoBatchSelection = function applyPoBatchSelection() {
+  window.applyPoBatchSelection = function applyPoBatchSelection(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
     const values = [...window.__poBatchSelection];
     if (!values.length) return;
 
+    // Cegah ghost click membuka dropdown lagi setelah tombol menutup dirinya sendiri.
     window.__poDropdownInteracting = true;
+    window.__poDropdownSuppressOpenUntil = performance.now() + 700;
+
     addPoChoice(values.join(", "));
     window.__poBatchSelection.clear();
 
     const searchInput = document.getElementById("po-search-input");
-    if (searchInput) searchInput.value = "";
+    if (searchInput) {
+      searchInput.value = "";
+      searchInput.blur();
+    }
 
-    // Dropdown baru ditutup setelah tombol Tambah PO ditekan.
-    document.getElementById("po-dropdown")?.classList.add("hidden");
+    const forceClose = () =>
+      document.getElementById("po-dropdown")?.classList.add("hidden");
+
+    // Tutup setelah click selesai, lalu ulang singkat untuk mengalahkan event focus/click lanjutan.
+    forceClose();
+    requestAnimationFrame(forceClose);
+    setTimeout(forceClose, 80);
+    setTimeout(forceClose, 240);
 
     setTimeout(() => {
       window.__poDropdownInteracting = false;
@@ -7652,7 +7670,7 @@ function securityFormMatchesRowsForPrint(rows = []) {
         .join("")}
       </div>
       <div class="sticky bottom-0 bg-surface-container-lowest border-t border-outline-variant p-2">
-        <button id="po-batch-add-btn" type="button" ${selectedBatch.size ? "" : "disabled"} onpointerdown="preventDropdownBlurSelect(event); applyPoBatchSelection()" class="w-full bg-primary-container text-on-primary-container rounded-lg px-4 py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed">${selectedBatch.size ? `Tambah ${selectedBatch.size} PO` : "Pilih PO"}</button>
+        <button id="po-batch-add-btn" type="button" ${selectedBatch.size ? "" : "disabled"} onclick="applyPoBatchSelection(event)" class="w-full bg-primary-container text-on-primary-container rounded-lg px-4 py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed">${selectedBatch.size ? `Tambah ${selectedBatch.size} PO` : "Pilih PO"}</button>
       </div>`;
   };
 
