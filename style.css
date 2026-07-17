@@ -2695,3 +2695,48 @@ body.security-lobby-qr-open-v152 {
   ~ form#checker-form {
   display: none !important;
 }
+
+/* ========================================================================== 
+   V16 FINAL FLOW
+   ========================================================================== */
+#checker-submit-btn[aria-disabled="true"],
+#checker-submit-btn:disabled {
+  pointer-events: none !important;
+}
+
+[data-vehicle-field="fleet_type"]:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background: rgb(var(--surface-container-high) / 0.78) !important;
+  color: rgb(var(--on-surface)) !important;
+}
+
+.driver-timeline-v16 {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.driver-timeline-item-v16 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--outline-variant) / 0.55);
+  color: rgb(var(--on-surface-variant));
+  background: rgb(var(--surface-container) / 0.4);
+  font-weight: 700;
+}
+
+.driver-timeline-item-v16.is-done {
+  color: rgb(var(--success));
+  border-color: rgb(var(--success) / 0.35);
+  background: rgb(var(--success) / 0.08);
+}
+
+.driver-timeline-item-v16.is-active {
+  color: rgb(var(--primary));
+  border-color: rgb(var(--primary) / 0.38);
+  background: rgb(var(--primary) / 0.1);
+}

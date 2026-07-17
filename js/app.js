@@ -1019,11 +1019,11 @@ function startDriverTrackTimer() {
   // Refresh waktu menunggu di layar setiap detik.
   driverTrackTimer = setInterval(refreshDriverTrackDom, 1000);
 
-  // Khusus halaman hasil scan QR: ambil ulang Output form setiap 1 menit.
+  // Khusus halaman hasil scan QR: ambil ulang Output form setiap 5 detik.
   refreshDriverTrackLiveData(true);
   driverTrackLiveRefreshTimer = setInterval(() => {
     refreshDriverTrackLiveData(true);
-  }, 60000);
+  }, 5000);
 }
 
 function stopDriverTrackTimer() {
@@ -1164,10 +1164,11 @@ function buildSecurityPreviewRowsForPrint() {
             slot: String(groupItems[0]?.slot || "3"),
           };
 
-    const rowSlot =
-      String(base.ticket_type || "").toUpperCase() === "DROP"
-        ? base.slot || grouped.slot || "3"
-        : grouped.slot || base.slot || "3";
+    const rowSlot = String(base.ticket_type || "")
+      .toUpperCase()
+      .includes("DROP")
+      ? base.slot || grouped.slot || "3"
+      : grouped.slot || base.slot || "3";
 
     const row = {
       ...base,
@@ -1462,7 +1463,7 @@ function pageDaftar() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${vendorCustomSelectInput(lookup?.summary?.vendor_name || "")}
           ${poMultiSelectInput(lookup?.summary?.po_number || "")}
-          ${selectInput("ticket_type", "Tipe Tiket", ["REG", "VIP", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
+          ${selectInput("ticket_type", "Tipe Tiket", ["REG", "DROP-OFF"], "REG", 'required onchange="handleTicketTypeChange()"')}
           ${selectInput("slot", "Slot", buildSlotOptions(lookup?.summary?.slot), lookup?.summary?.slot || "3", "required")}
           ${selectInput("fleet_type", "Fleet Type", getFleetTypeOptions(), getFleetDefaultType(), 'required onchange="updateFleetPreview()"')}
           ${fleetPreviewCard(getFleetDefaultType())}
@@ -1497,7 +1498,7 @@ function pageDaftar() {
     <div class="glass-card rounded-xl p-6 flex flex-col justify-center items-center text-center">
       <span class="text-on-surface-variant uppercase font-label-sm">Nomor Terakhir</span>
       <div id="new-queue-number" class="font-queue-id text-[64px] md:text-[78px] leading-none text-primary my-6">${esc(state.lastCalled.queue_no || "REG 3-0")}</div>
-      <p class="text-on-surface-variant">Format: REG 3-12 = reguler slot 3 urutan 12. DROP = drop barang.</p>
+      <p class="text-on-surface-variant">Format: REG 3-12 = reguler slot 3 urutan 12. DROP-OFF digunakan untuk kendaraan tanpa PO.</p>
     </div>
   </div>`;
 }
@@ -2023,20 +2024,26 @@ function pronounceQueueNo(queueNo = "") {
   const text = String(queueNo || "")
     .trim()
     .toUpperCase();
-  const match = text.match(/^(REG|VIP|DROP)\s*([0-9]+)\s*-\s*([0-9]+)$/);
+  const match = text.match(
+    /^(REG|VIP|DROP(?:-OFF)?)\s*([0-9]+)\s*-\s*([0-9]+)$/,
+  );
   if (!match) return text;
   const typeMap = {
     REG: "reguler",
     VIP: "VIP",
-    DROP: "drop barang",
+    DROP: "drop off",
+    "DROP-OFF": "drop off",
   };
   return `${typeMap[match[1]] || match[1]} slot ${numberToIndoWords(match[2])} nomor ${numberToIndoWords(match[3])}`;
 }
 
 function pronounceGate(gate = "") {
   const text = String(gate || "").trim();
+  const sloc = text.match(/^(CBT|STL)-GATE-INB-01-0*([0-9]+)$/i);
+  if (sloc)
+    return `${sloc[1].toUpperCase()} gate ${numberToIndoWords(sloc[2])}`;
   const match = text.match(/(Dock|Chiller)\s*0*([0-9]+)/i);
-  if (!match) return text || "dock";
+  if (!match) return text || "gate";
   return `${match[1]} ${numberToIndoWords(match[2])}`;
 }
 
@@ -3585,9 +3592,9 @@ function selectInput(name, label, options = [], value = "", extra = "") {
 }
 
 function buildSlotOptions(preferred) {
-  const base = ["1", "2", "3", "4", "5", "6"];
+  const base = ["1", "2", "3"];
   const val = String(preferred || "").trim();
-  return val && !base.includes(val) ? [val].concat(base) : base;
+  return base.includes(val) ? base : base;
 }
 
 const FLEET_IMAGE_DATA = {
@@ -4291,8 +4298,10 @@ function handleTicketTypeChange() {
   const type = form.querySelector('[name="ticket_type"]')?.value;
   const slot = form.querySelector('[name="slot"]');
   if (slot) {
-    slot.disabled = type === "DROP";
-    slot.parentElement.style.opacity = type === "DROP" ? "0.45" : "1";
+    slot.disabled = String(type || "").includes("DROP");
+    slot.parentElement.style.opacity = String(type || "").includes("DROP")
+      ? "0.45"
+      : "1";
   }
 }
 
@@ -6364,7 +6373,7 @@ function pageDaftar() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${vendorCustomSelectInput(lookup?.summary?.vendor_name || "")}
           ${poMultiSelectInput(lookup?.summary?.po_number || "")}
-          ${selectInput("ticket_type", "Tipe Tiket", ["REG", "VIP", "DROP"], "REG", 'required onchange="handleTicketTypeChange()"')}
+          ${selectInput("ticket_type", "Tipe Tiket", ["REG", "DROP-OFF"], "REG", 'required onchange="handleTicketTypeChange()"')}
           ${selectInput("slot", "Slot", buildSlotOptions(lookup?.summary?.slot), lookup?.summary?.slot || "3", "required")}
           ${vehicleMultiInput()}
           <label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Register Time</span><input name="register_time" class="form-input opacity-80" value="${esc(nowText)}" readonly /></label>
@@ -6386,7 +6395,7 @@ function pageDaftar() {
     <div class="glass-card rounded-xl p-6 flex flex-col justify-center items-center text-center">
       <span class="text-on-surface-variant uppercase font-label-sm">Nomor Terakhir</span>
       <div id="new-queue-number" class="font-queue-id text-[64px] md:text-[78px] leading-none text-primary my-6">${esc(state.lastCalled.queue_no || "REG 3-0")}</div>
-      <p class="text-on-surface-variant">Format: REG 3-12 = reguler slot 3 urutan 12. Banyak kendaraan akan membuat banyak nomor antrian.</p>
+      <p class="text-on-surface-variant">Format: REG 3-12 = reguler slot 3 urutan 12. DROP-OFF digunakan untuk kendaraan tanpa PO.</p>
     </div>
   </div>`;
 }
@@ -6478,10 +6487,11 @@ function buildSecurityPreviewRowsForPrint() {
             ),
             slot: String(groupItems[0]?.slot || "3"),
           };
-    const rowSlot =
-      String(base.ticket_type || "").toUpperCase() === "DROP"
-        ? base.slot || grouped.slot || "3"
-        : grouped.slot || base.slot || "3";
+    const rowSlot = String(base.ticket_type || "")
+      .toUpperCase()
+      .includes("DROP")
+      ? base.slot || grouped.slot || "3"
+      : grouped.slot || base.slot || "3";
     const row = {
       ...base,
       ticket_id:
@@ -7853,9 +7863,15 @@ function securityFormMatchesRowsForPrint(rows = []) {
           const key = checkerRowKey(r);
           const st = String(r.status || "").toUpperCase();
           let action = `<span class="text-xs text-on-surface-variant">-</span>`;
-          if (st === "WAITING GR" && ["ADMIN", "SPV"].includes(role))
+          if (
+            st === "WAITING GR" &&
+            ["ADMIN", "SPV", "DEVELOPER"].includes(role)
+          )
             action = `<button onclick="advanceGrStatusFromKey('${key}','DONE GR',this)" class="bg-secondary-container text-on-secondary-container px-3 py-2 rounded-lg font-bold text-xs whitespace-nowrap">Done GR</button>`;
-          if (st === "DONE GR" && ["SECURITY", "SPV"].includes(role))
+          if (
+            st === "DONE GR" &&
+            ["SECURITY", "SPV", "DEVELOPER"].includes(role)
+          )
             action = `<button onclick="advanceGrStatusFromKey('${key}','COMPLETED',this)" class="bg-success/15 border border-success/30 text-success px-3 py-2 rounded-lg font-bold text-xs whitespace-nowrap">Handover GRN</button>`;
           const terminal = st === "COMPLETED" || st === "EXPIRED";
           const wait =
@@ -9918,8 +9934,7 @@ window.initShader = function initShaderDisabled() {
     const filtered = rows.filter((row) => {
       const status = String(row.status || "WAITING").toUpperCase();
       if (safe === "unloading") return status === "UNLOADING";
-      if (safe === "checking")
-        return ["WAITING CHECKER", "CHECKING"].includes(status);
+      if (safe === "checking") return status === "UNLOADING";
       if (safe === "selesai")
         return ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(
           status,
@@ -9941,10 +9956,8 @@ window.initShader = function initShaderDisabled() {
       unloading: rows.filter(
         (row) => String(row.status || "").toUpperCase() === "UNLOADING",
       ).length,
-      checking: rows.filter((row) =>
-        ["WAITING CHECKER", "CHECKING"].includes(
-          String(row.status || "").toUpperCase(),
-        ),
+      checking: rows.filter(
+        (row) => String(row.status || "").toUpperCase() === "UNLOADING",
       ).length,
       selesai: rows.filter((row) =>
         ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(
@@ -10014,7 +10027,7 @@ window.initShader = function initShaderDisabled() {
     let nextStatus = "";
     if (currentStatus === "WAITING") nextStatus = "CALLED";
     else if (currentStatus === "CALLED") nextStatus = "UNLOADING";
-    else if (currentStatus === "UNLOADING") nextStatus = "WAITING CHECKER";
+    else if (currentStatus === "UNLOADING") nextStatus = "WAITING GR";
     if (!nextStatus)
       return showToast(`Status ${currentStatus} tidak memakai panel gate.`);
 
@@ -10045,7 +10058,7 @@ window.initShader = function initShaderDisabled() {
     const label = document.getElementById("checker-status-preview");
     if (box) {
       box.className = `rounded-lg px-4 py-3 font-bold flex items-center gap-2 border ${
-        safe === "WAITING CHECKER"
+        safe === "WAITING GR"
           ? "bg-success/10 border-success/30 text-success"
           : safe === "UNLOADING"
             ? "bg-warning/10 border-warning/30 text-warning"
@@ -10054,21 +10067,21 @@ window.initShader = function initShaderDisabled() {
     }
     if (icon)
       icon.textContent =
-        safe === "WAITING CHECKER"
+        safe === "WAITING GR"
           ? "fact_check"
           : safe === "UNLOADING"
             ? "warehouse"
             : "campaign";
     if (label)
       label.textContent =
-        safe === "WAITING CHECKER"
-          ? "SELESAI UNLOADING → CHECKER BARANG"
+        safe === "WAITING GR"
+          ? "FINISH UNLOADING → WAITING GR"
           : safe === "UNLOADING"
             ? "MULAI UNLOADING"
             : "PANGGIL DRIVER KE GATE";
     setCheckerSubmitButtonState?.(
       "active",
-      safe === "WAITING CHECKER"
+      safe === "WAITING GR"
         ? "Selesai Unloading"
         : safe === "UNLOADING"
           ? "Mulai Unloading"
@@ -10114,7 +10127,7 @@ window.initShader = function initShaderDisabled() {
 
   window.checkerTicketCard = function checkerTicketCardV15(row = {}, i = 0) {
     const status = String(row.status || "WAITING").toUpperCase();
-    if (["WAITING CHECKER", "CHECKING"].includes(status)) {
+    if (getCheckerSection() === "checking" && status === "UNLOADING") {
       return checkerWorkTicketCardV15(row);
     }
     return originalCheckerTicketCardV15
@@ -10267,7 +10280,7 @@ window.initShader = function initShaderDisabled() {
     return poRows
       .map((po) => {
         const canDoneGr =
-          ["ADMIN", "SPV"].includes(role) &&
+          ["ADMIN", "SPV", "DEVELOPER"].includes(role) &&
           po.checker_status === "DONE" &&
           po.gr_status !== "DONE GR";
         return `<tr>
@@ -10292,7 +10305,8 @@ window.initShader = function initShaderDisabled() {
           .map((ticket, index) => {
             const status = String(ticket.status || "").toUpperCase();
             const canHandover =
-              ["SECURITY", "SPV"].includes(role) &&
+              ["SECURITY", "SPV", "DEVELOPER"].includes(role) &&
+              !!ticket.finish_unloading_at &&
               ticket.all_done_gr &&
               status !== "COMPLETED";
             const wait =
@@ -10304,11 +10318,12 @@ window.initShader = function initShaderDisabled() {
             const sla = getInboundSlaInfo(ticket);
             const action = canHandover
               ? `<button type="button" onclick="handoverGrnTicketV15('${esc(ticket.ticket_id)}',this)" class="bg-success/15 border border-success/30 text-success rounded-lg px-3 py-2 text-xs font-bold whitespace-nowrap">Handover GRN</button>`
-              : status === "WAITING GR" && ["ADMIN", "SPV"].includes(role)
+              : status === "WAITING GR" &&
+                  ["ADMIN", "SPV", "DEVELOPER"].includes(role)
                 ? `<span class="text-xs font-bold text-warning">GR ${ticket.gr_progress || "0/0"}</span>`
                 : "-";
             const detailId = `waiting-detail-${String(ticket.ticket_id).replace(/[^A-Za-z0-9_-]/g, "_")}`;
-            return `<tr class="hover:bg-primary/5"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button type="button" onclick="document.getElementById('${detailId}').classList.toggle('hidden')" class="thin-tab rounded-lg px-3 py-2 text-xs font-bold">Detail PO</button></td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${index})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3 text-sm whitespace-nowrap">${esc(ticket.created_at || "-")}</td><td class="px-4 py-3 font-queue-id text-primary">${esc(ticket.queue_no || "-")}</td><td class="px-4 py-3 min-w-[190px]">${esc(ticket.vendor_name || "-")}</td><td class="px-4 py-3">${esc(ticket.fleet_type || "-")}</td><td class="px-4 py-3 font-queue-id">${esc(ticket.plat_number || "-")}</td><td class="px-4 py-3">${ticket.po_rows?.length || 1}</td><td class="px-4 py-3">${esc(ticket.gate || "-")}</td><td class="px-4 py-3">${checkerStatusPill(status)}</td><td class="px-4 py-3 font-bold">${num(ticket.call_count || 0)}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(wait)}</td><td class="px-4 py-3">${num(ticket.total_po_qty || 0)}</td><td class="px-4 py-3">${num(ticket.count_po_sku || 0)}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.checker_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.gr_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex rounded-full border px-2 py-1 text-xs font-bold ${sla.badgeClass}">${esc(sla.status)}</span></td></tr>
+            return `<tr class="hover:bg-primary/5"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button type="button" onclick="toggleWaitingDetailV16('${detailId}')" class="thin-tab rounded-lg px-3 py-2 text-xs font-bold">Detail PO</button></td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${index})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3 text-sm whitespace-nowrap">${esc(ticket.created_at || "-")}</td><td class="px-4 py-3 font-queue-id text-primary">${esc(ticket.queue_no || "-")}</td><td class="px-4 py-3 min-w-[190px]">${esc(ticket.vendor_name || "-")}</td><td class="px-4 py-3">${esc(ticket.fleet_type || "-")}</td><td class="px-4 py-3 font-queue-id">${esc(ticket.plat_number || "-")}</td><td class="px-4 py-3">${ticket.po_rows?.length || 1}</td><td class="px-4 py-3">${esc(ticket.gate || "-")}</td><td class="px-4 py-3">${checkerStatusPill(status)}</td><td class="px-4 py-3 font-bold">${num(ticket.call_count || 0)}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(wait)}</td><td class="px-4 py-3">${num(ticket.total_po_qty || 0)}</td><td class="px-4 py-3">${num(ticket.count_po_sku || 0)}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.checker_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.gr_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex rounded-full border px-2 py-1 text-xs font-bold ${sla.badgeClass}">${esc(sla.status)}</span></td></tr>
           <tr id="${detailId}" class="hidden waiting-detail-row-v15"><td colspan="18" class="p-0"><div class="waiting-detail-panel-v15"><div class="flex flex-wrap gap-4 mb-4 text-xs"><span><b>Start Unloading:</b> ${esc(ticket.start_unloading_at || "-")}</span><span><b>Finish Unloading:</b> ${esc(ticket.finish_unloading_at || "-")}</span><span><b>Checker:</b> ${esc(ticket.checker_progress || "0/0")}</span><span><b>GR:</b> ${esc(ticket.gr_progress || "0/0")}</span><span><b>WA Ticket:</b> ${esc(ticket.wa_ticket_status || ticket.po_rows?.[0]?.wa_ticket_status || "-")}</span><span><b>WA Handover:</b> ${esc(ticket.wa_handover_status || ticket.po_rows?.[0]?.wa_handover_status || "-")}</span></div><div class="overflow-x-auto"><table class="po-detail-table-v15"><thead><tr><th>PO Number</th><th>Qty</th><th>SKU</th><th>Checker</th><th>Status Checker</th><th>Start Checker</th><th>Done Checker</th><th>GR Status</th><th>Done GR</th><th>SLA</th><th>Action</th></tr></thead><tbody>${waitingPoDetailRowsV15(ticket, role)}</tbody></table></div></div></td></tr>`;
           })
           .join("") ||
@@ -11083,4 +11098,702 @@ window.initShader = function initShaderDisabled() {
         return result;
       };
   }
+})();
+
+/* ==========================================================================
+ * V16 — FINAL OPERASIONAL FLOW + ROLE ACCESS + SECURITY INPUT
+ * Flow master: WAITING → CALLED → UNLOADING → WAITING GR → DONE GR → COMPLETED
+ * Checker per PO berjalan selama UNLOADING. Finish Unloading wajib seluruh PO DONE.
+ * ========================================================================== */
+(function installInboundV16FinalUi() {
+  if (window.__inboundV16FinalUiInstalled) return;
+  window.__inboundV16FinalUiInstalled = true;
+
+  const GATES_V16 = [
+    "CBT-GATE-INB-01-01",
+    "CBT-GATE-INB-01-02",
+    "CBT-GATE-INB-01-03",
+    "CBT-GATE-INB-01-04",
+    "CBT-GATE-INB-01-05",
+    "CBT-GATE-INB-01-06",
+    "CBT-GATE-INB-01-07",
+    "CBT-GATE-INB-01-08",
+    "CBT-GATE-INB-01-09",
+    "STL-GATE-INB-01-01",
+    "STL-GATE-INB-01-02",
+    "STL-GATE-INB-01-03",
+    "STL-GATE-INB-01-04",
+    "STL-GATE-INB-01-05",
+    "STL-GATE-INB-01-06",
+  ];
+
+  // ------------------------------------------------------------------------
+  // AUTH FINAL
+  // ------------------------------------------------------------------------
+  const preservedOperationalUsers = AUTH_USERS.filter((user) =>
+    ["SPV", "CHECKER", "SECURITY"].includes(normalizeRole(user.role)),
+  );
+
+  AUTH_USERS.splice(
+    0,
+    AUTH_USERS.length,
+    ...preservedOperationalUsers,
+    {
+      username: "Mentari",
+      password: "43747",
+      role: "ADMIN",
+      display_name: "Mentari",
+    },
+    {
+      username: "Raga Nugraha",
+      password: "62809",
+      role: "ADMIN",
+      display_name: "Raga Nugraha",
+    },
+    {
+      username: "Abdul Hamid",
+      password: "42413",
+      role: "ADMIN",
+      display_name: "Abdul Hamid",
+    },
+    {
+      username: "Ria Revina Meliska",
+      password: "78043",
+      role: "ADMIN",
+      display_name: "Ria Revina Meliska",
+    },
+    {
+      username: "pandu",
+      password: "kohakuu111!!!",
+      role: "DEVELOPER",
+      display_name: "Pandu Developer",
+    },
+  );
+
+  ROLE_ACCESS.SPV = ["daftar", "checker", "panggil", "monitor", "laporan"];
+  ROLE_ACCESS.ADMIN = ["laporan", "monitor"];
+  ROLE_ACCESS.CHECKER = ["checker"];
+  ROLE_ACCESS.SECURITY = ["daftar", "laporan"];
+  ROLE_ACCESS.DEVELOPER = [
+    "daftar",
+    "checker",
+    "panggil",
+    "monitor",
+    "laporan",
+    "setting",
+    "debug",
+  ];
+
+  ROLE_DEFAULT_PAGE.SPV = "daftar";
+  ROLE_DEFAULT_PAGE.ADMIN = "laporan";
+  ROLE_DEFAULT_PAGE.CHECKER = "checker";
+  ROLE_DEFAULT_PAGE.SECURITY = "daftar";
+  ROLE_DEFAULT_PAGE.DEVELOPER = "daftar";
+
+  // Session lama tidak boleh mempertahankan role/akun yang sudah dihapus.
+  // Contoh: generic admin dari versi sebelumnya harus otomatis logout.
+  const getAuthUserBeforeV16 = getAuthUser;
+  window.getAuthUser = function getAuthUserV16() {
+    const stored = getAuthUserBeforeV16();
+    if (!stored?.username) return null;
+
+    const master = AUTH_USERS.find(
+      (user) =>
+        String(user.username || "")
+          .trim()
+          .toLowerCase() ===
+        String(stored.username || "")
+          .trim()
+          .toLowerCase(),
+    );
+
+    if (!master) {
+      clearAuthUser();
+      return null;
+    }
+
+    const normalized = {
+      ...stored,
+      username: master.username,
+      role: normalizeRole(master.role),
+      display_name: master.display_name || master.username,
+    };
+
+    if (
+      normalizeRole(stored.role) !== normalized.role ||
+      stored.display_name !== normalized.display_name ||
+      stored.username !== normalized.username
+    ) {
+      setAuthUser(normalized);
+    }
+
+    return normalized;
+  };
+  try {
+    getAuthUser = window.getAuthUser;
+  } catch (error) {}
+
+  const canAccessPageBeforeV16 = canAccessPage;
+  canAccessPage = function canAccessPageV16(page, role = getAuthUser()?.role) {
+    const safePage = String(page || "").trim();
+    const safeRole = normalizeRole(role);
+    if (["setting", "debug"].includes(safePage)) {
+      return safeRole === "DEVELOPER";
+    }
+    return canAccessPageBeforeV16(safePage, safeRole);
+  };
+  window.canAccessPage = canAccessPage;
+
+  // ------------------------------------------------------------------------
+  // SLOT / GATE / DROP-OFF
+  // ------------------------------------------------------------------------
+  window.getCibitungGateOptions = function getInboundGateSlocV16() {
+    return [...GATES_V16];
+  };
+  try {
+    getCibitungGateOptions = window.getCibitungGateOptions;
+  } catch (error) {}
+
+  state.options.gate = [...GATES_V16];
+
+  window.buildSlotOptions = function buildSlotOptionsV16() {
+    return ["1", "2", "3"];
+  };
+  try {
+    buildSlotOptions = window.buildSlotOptions;
+  } catch (error) {}
+
+  const getFleetTypeOptionsBeforeV16 = getFleetTypeOptions;
+  window.getFleetTypeOptions = function getFleetTypeOptionsV16() {
+    const values = getFleetTypeOptionsBeforeV16().filter(
+      (value) => normalizeFleetType(value) !== "DROP-OFF",
+    );
+    return [...values, "DROP-OFF"];
+  };
+  try {
+    getFleetTypeOptions = window.getFleetTypeOptions;
+  } catch (error) {}
+
+  const getFleetDisplayLabelBeforeV16 = getFleetDisplayLabel;
+  window.getFleetDisplayLabel = function getFleetDisplayLabelV16(type) {
+    const safe = normalizeFleetType(type);
+    if (safe === "DROP" || safe === "DROP OFF" || safe === "DROP-OFF") {
+      return "DROP-OFF";
+    }
+    return getFleetDisplayLabelBeforeV16(type);
+  };
+  try {
+    getFleetDisplayLabel = window.getFleetDisplayLabel;
+  } catch (error) {}
+
+  const getFleetNoteBeforeV16 = getFleetNote;
+  window.getFleetNote = function getFleetNoteV16(type) {
+    return normalizeFleetType(type) === "DROP-OFF"
+      ? "Drop-off tanpa kewajiban PO Number."
+      : getFleetNoteBeforeV16(type);
+  };
+  try {
+    getFleetNote = window.getFleetNote;
+  } catch (error) {}
+
+  const vehicleFleetOptionsHtmlBeforeV16 = vehicleFleetOptionsHtml;
+  window.vehicleFleetOptionsHtml = function vehicleFleetOptionsHtmlV16(
+    selected,
+  ) {
+    return vehicleFleetOptionsHtmlBeforeV16(selected);
+  };
+  try {
+    vehicleFleetOptionsHtml = window.vehicleFleetOptionsHtml;
+  } catch (error) {}
+
+  function isDropOffV16() {
+    const form = document.getElementById("security-form");
+    const type = String(form?.ticket_type?.value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-");
+    return type === "DROP-OFF" || type === "DROP";
+  }
+
+  window.handleTicketTypeChange = function handleTicketTypeChangeV16() {
+    const form = document.getElementById("security-form");
+    if (!form) return;
+
+    const dropOff = isDropOffV16();
+    const ticketType = form.querySelector('[name="ticket_type"]');
+    if (ticketType && ticketType.value === "DROP")
+      ticketType.value = "DROP-OFF";
+
+    const poHidden = form.querySelector('[name="po_number"]');
+    if (poHidden) {
+      poHidden.required = !dropOff;
+      poHidden.dataset.optionalDropOff = dropOff ? "1" : "0";
+    }
+
+    const poSearch = document.getElementById("po-search-input");
+    if (poSearch) {
+      poSearch.placeholder = dropOff
+        ? "PO opsional untuk DROP-OFF"
+        : "Cari atau ketik PO manual...";
+    }
+
+    const slot = form.querySelector('[name="slot"]');
+    if (slot && !["1", "2", "3"].includes(String(slot.value))) {
+      slot.value = "3";
+    }
+
+    document
+      .querySelectorAll('#vehicle-multi-rows [data-vehicle-field="fleet_type"]')
+      .forEach((select) => {
+        if (dropOff) {
+          select.dataset.beforeDropOffV16 =
+            normalizeFleetType(select.value) === "DROP-OFF"
+              ? "CDD"
+              : select.value || "CDD";
+          if (
+            ![...select.options].some((option) => option.value === "DROP-OFF")
+          ) {
+            select.add(new Option("DROP-OFF", "DROP-OFF"));
+          }
+          select.value = "DROP-OFF";
+          select.disabled = true;
+        } else {
+          select.disabled = false;
+          if (normalizeFleetType(select.value) === "DROP-OFF") {
+            select.value = select.dataset.beforeDropOffV16 || "CDD";
+          }
+        }
+        updateVehicleFleetPreview(select);
+      });
+
+    if (typeof syncVehicleMultiInput === "function") syncVehicleMultiInput();
+    if (typeof lookupPo === "function") lookupPo(true);
+  };
+  try {
+    handleTicketTypeChange = window.handleTicketTypeChange;
+  } catch (error) {}
+
+  const addVehicleRowBeforeV16 = addVehicleRow;
+  window.addVehicleRow = function addVehicleRowV16(vehicle = {}) {
+    const result = addVehicleRowBeforeV16(vehicle);
+    handleTicketTypeChangeV16();
+    return result;
+  };
+  try {
+    addVehicleRow = window.addVehicleRow;
+  } catch (error) {}
+
+  // ------------------------------------------------------------------------
+  // VENDOR MANUAL
+  // ------------------------------------------------------------------------
+  window.useManualVendorV16 = function useManualVendorV16(value = "") {
+    const typed = String(
+      value || document.getElementById("vendor-search-input")?.value || "",
+    )
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!typed) return;
+    setVendorValue(typed, true);
+    document.getElementById("vendor-dropdown")?.classList.add("hidden");
+  };
+
+  window.filterVendorDropdown = function filterVendorDropdownV16() {
+    const list = document.getElementById("vendor-dropdown-list");
+    if (!list) return;
+
+    const options = getFilteredVendorOptions();
+    const typed = getVendorSearchText();
+    const exact = (state.options.vendor_name || []).some(
+      (vendor) => normalizeKey(vendor) === normalizeKey(typed),
+    );
+
+    const manual =
+      typed && !exact
+        ? `<button type="button" data-manual-vendor="${esc(typed)}" onclick="useManualVendorV16(this.dataset.manualVendor)" class="w-full mb-2 px-3 py-3 rounded-lg border border-primary/30 bg-primary/10 text-left font-bold text-primary">Gunakan vendor manual: ${esc(typed)}</button>`
+        : "";
+
+    const optionsHtml = options
+      .map((vendor) => {
+        const poCount = (state.options.po_number || []).filter((po) =>
+          vendorMatchesFilter(getPoVendor(po), vendor),
+        ).length;
+        return `<button type="button" onclick="handleVendorOptionSafeClick(event, '${poEncode(vendor)}')" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 text-left grid grid-cols-[1fr_auto] gap-3 border-b border-outline-variant/20 last:border-b-0"><span class="font-bold text-[12px] sm:text-[13px] text-on-surface break-words">${esc(vendor)}</span><span class="text-[10px] text-primary font-bold whitespace-nowrap">${num(poCount)} PO</span></button>`;
+      })
+      .join("");
+
+    list.innerHTML =
+      manual || optionsHtml
+        ? manual + optionsHtml
+        : `<div class="px-3 py-3 text-[12px] text-on-surface-variant">Vendor belum tersedia. Ketik nama lalu gunakan sebagai vendor manual.</div>`;
+  };
+  try {
+    filterVendorDropdown = window.filterVendorDropdown;
+  } catch (error) {}
+
+  window.handleVendorSearchKeydown = function handleVendorSearchKeydownV16(
+    event,
+  ) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const typed = getVendorSearchText();
+      const exact = getFilteredVendorOptions().find(
+        (vendor) => normalizeKey(vendor) === normalizeKey(typed),
+      );
+      if (exact) selectVendorChoice(poEncode(exact));
+      else useManualVendorV16(typed);
+    } else if (event.key === "Escape") {
+      document.getElementById("vendor-dropdown")?.classList.add("hidden");
+    }
+  };
+  try {
+    handleVendorSearchKeydown = window.handleVendorSearchKeydown;
+  } catch (error) {}
+
+  // ------------------------------------------------------------------------
+  // PLAT AUTO-NEXT UNTUK MULTI KENDARAAN
+  // ------------------------------------------------------------------------
+  const plateTimersV16 = new WeakMap();
+
+  function vehiclePlateSiblingV16(input, direction) {
+    const row = input?.closest?.(".vehicle-row");
+    if (!row) return null;
+    const order = ["prefix", "number", "suffix"];
+    const part = String(input.dataset.vehiclePlatePart || "");
+    return row.querySelector(
+      `[data-vehicle-plate-part="${order[order.indexOf(part) + direction] || "__none__"}"]`,
+    );
+  }
+
+  function focusVehiclePlateV16(input) {
+    if (!input) return;
+    try {
+      input.focus({ preventScroll: true });
+    } catch (error) {
+      input.focus();
+    }
+    input.select?.();
+  }
+
+  document.addEventListener(
+    "input",
+    (event) => {
+      const input = event.target?.closest?.("[data-vehicle-plate-part]");
+      if (!input) return;
+      const part = String(input.dataset.vehiclePlatePart || "");
+      const value = String(input.value || "");
+
+      if (part === "prefix") {
+        const old = plateTimersV16.get(input);
+        if (old) clearTimeout(old);
+        if (value.length >= 2) {
+          focusVehiclePlateV16(vehiclePlateSiblingV16(input, 1));
+        } else if (value.length === 1) {
+          plateTimersV16.set(
+            input,
+            setTimeout(() => {
+              if (
+                document.activeElement === input &&
+                input.value.length === 1
+              ) {
+                focusVehiclePlateV16(vehiclePlateSiblingV16(input, 1));
+              }
+            }, 420),
+          );
+        }
+      } else if (part === "number" && value.length >= 4) {
+        focusVehiclePlateV16(vehiclePlateSiblingV16(input, 1));
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      const input = event.target?.closest?.("[data-vehicle-plate-part]");
+      if (!input) return;
+      if (event.key === "Backspace" && !input.value) {
+        const previous = vehiclePlateSiblingV16(input, -1);
+        if (previous) {
+          event.preventDefault();
+          focusVehiclePlateV16(previous);
+        }
+      }
+      if (["Enter", " "].includes(event.key)) {
+        const next = vehiclePlateSiblingV16(input, 1);
+        if (next) {
+          event.preventDefault();
+          focusVehiclePlateV16(next);
+        }
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    "paste",
+    (event) => {
+      const input = event.target?.closest?.("[data-vehicle-plate-part]");
+      if (!input) return;
+      const pasted = String(event.clipboardData?.getData("text") || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      const match = pasted.match(/^([A-Z]{1,2})(\d{1,4})([A-Z]{0,3})$/);
+      if (!match) return;
+      const row = input.closest(".vehicle-row");
+      if (!row) return;
+      event.preventDefault();
+      row.querySelector('[data-vehicle-plate-part="prefix"]').value = match[1];
+      row.querySelector('[data-vehicle-plate-part="number"]').value = match[2];
+      row.querySelector('[data-vehicle-plate-part="suffix"]').value = match[3];
+      syncVehicleMultiInput?.();
+      focusVehiclePlateV16(
+        row.querySelector('[data-vehicle-plate-part="suffix"]'),
+      );
+    },
+    true,
+  );
+
+  // ------------------------------------------------------------------------
+  // FINISH UNLOADING GUARD + CHECKER SECTION
+  // ------------------------------------------------------------------------
+  const populateCheckerBeforeV16 = window.populateCheckerFormFromRow;
+  window.populateCheckerFormFromRow = function populateCheckerFormFromRowV16(
+    row,
+  ) {
+    populateCheckerBeforeV16?.(row);
+    const status = String(row?.status || "").toUpperCase();
+    if (status !== "UNLOADING") return;
+
+    const form = document.getElementById("checker-form");
+    const btn = document.getElementById("checker-submit-btn");
+    const txt = document.getElementById("checker-submit-text");
+    const preview = document.getElementById("checker-status-preview");
+    const done = Number(row?.checker_done_count || 0);
+    const total = Number(row?.checker_total_count || row?.po_rows?.length || 0);
+    const allDone = total > 0 && done === total;
+
+    if (form) {
+      form.dataset.allCheckerDoneV16 = allDone ? "1" : "0";
+      form.dataset.checkerProgressV16 = `${done}/${total}`;
+      if (form.status) form.status.value = "WAITING GR";
+    }
+
+    if (preview) {
+      preview.textContent = allDone
+        ? "FINISH UNLOADING → WAITING GR"
+        : `MENUNGGU DONE CHECKING ${done}/${total}`;
+    }
+    if (txt) {
+      txt.textContent = allDone
+        ? "Finish Unloading"
+        : `Menunggu Checker ${done}/${total}`;
+    }
+    if (btn) {
+      btn.disabled = !allDone;
+      btn.setAttribute("aria-disabled", allDone ? "false" : "true");
+      btn.classList.toggle("opacity-60", !allDone);
+      btn.classList.toggle("cursor-not-allowed", !allDone);
+    }
+  };
+  try {
+    populateCheckerFormFromRow = window.populateCheckerFormFromRow;
+  } catch (error) {}
+
+  // ------------------------------------------------------------------------
+  // WAITING LIST DETAIL: OPEN/CLOSE MANUAL + AUTO-SYNC PERSISTENCE
+  // ------------------------------------------------------------------------
+  window.toggleWaitingDetailV16 = function toggleWaitingDetailV16(detailId) {
+    const row = document.getElementById(String(detailId || ""));
+    if (!row) return;
+    row.classList.toggle("hidden");
+    // V15.5 listener membaca kondisi terbaru dan menyimpan state.
+  };
+
+  // Jalankan sinkronisasi tipe tiket setelah render halaman Security.
+  const renderPageBeforeV16 = renderPage;
+  renderPage = function renderPageV16(page, toast = true) {
+    const result = renderPageBeforeV16.call(this, page, toast);
+    if (String(page || state.page) === "daftar") {
+      setTimeout(() => handleTicketTypeChangeV16(), 0);
+    }
+    applyRoleAccessUI?.();
+    return result;
+  };
+  window.renderPage = renderPage;
+
+  applyRoleAccessUI?.();
+})();
+
+/* ==========================================================================
+ * V16 DRIVER TRACK — ceklis selalu mengikuti live ticket terbaru.
+ * ========================================================================== */
+(function installDriverTrackV16() {
+  if (window.__driverTrackV16Installed) return;
+  window.__driverTrackV16Installed = true;
+
+  function timelineStateV16(row = {}) {
+    const status = String(row.status || "WAITING").toUpperCase();
+    const poRows = Array.isArray(row.po_rows) ? row.po_rows : [];
+    const checkerTotal = Number(row.checker_total_count || poRows.length || 0);
+    const checkerDone = Number(
+      row.checker_done_count ||
+        poRows.filter(
+          (po) => String(po.checker_status || "").toUpperCase() === "DONE",
+        ).length,
+    );
+    const grTotal = Number(row.gr_total_count || poRows.length || 0);
+    const grDone = Number(
+      row.gr_done_count ||
+        poRows.filter(
+          (po) => String(po.gr_status || "").toUpperCase() === "DONE GR",
+        ).length,
+    );
+
+    return {
+      status,
+      registered: true,
+      called:
+        !!row.called_at ||
+        ["CALLED", "UNLOADING", "WAITING GR", "DONE GR", "COMPLETED"].includes(
+          status,
+        ),
+      unloadingStarted:
+        !!row.start_unloading_at ||
+        ["UNLOADING", "WAITING GR", "DONE GR", "COMPLETED"].includes(status),
+      unloadingFinished:
+        !!row.finish_unloading_at ||
+        ["WAITING GR", "DONE GR", "COMPLETED"].includes(status),
+      checkerDone,
+      checkerTotal,
+      grDone,
+      grTotal,
+      grStarted:
+        grDone > 0 ||
+        poRows.some((po) =>
+          ["WAITING GR", "DONE GR"].includes(
+            String(po.gr_status || "").toUpperCase(),
+          ),
+        ),
+      allDoneGr: !!row.all_done_gr || (grTotal > 0 && grDone === grTotal),
+      completed: status === "COMPLETED",
+    };
+  }
+
+  window.driverTimelineV16 = function driverTimelineV16(row = {}) {
+    const stateV16 = timelineStateV16(row);
+    const items = [
+      {
+        label: "Registrasi",
+        done: stateV16.registered,
+        active: false,
+      },
+      {
+        label: "Dipanggil ke Gate",
+        done: stateV16.called,
+        active: !stateV16.called && stateV16.status === "WAITING",
+      },
+      {
+        label: `Unloading & Checking ${stateV16.checkerDone}/${stateV16.checkerTotal}`,
+        done: stateV16.unloadingFinished,
+        active: stateV16.unloadingStarted && !stateV16.unloadingFinished,
+      },
+      {
+        label: `Proses GR ${stateV16.grDone}/${stateV16.grTotal}`,
+        done: stateV16.allDoneGr,
+        active: stateV16.grStarted && !stateV16.allDoneGr,
+      },
+      {
+        label: "Handover Surat Jalan",
+        done: stateV16.completed,
+        active:
+          stateV16.unloadingFinished &&
+          stateV16.allDoneGr &&
+          !stateV16.completed,
+      },
+    ];
+
+    return `<div id="driver-track-timeline-v16" class="driver-timeline-v16">${items
+      .map((item) => {
+        const cls = item.done ? "is-done" : item.active ? "is-active" : "";
+        const icon = item.done
+          ? "check_circle"
+          : item.active
+            ? "pending"
+            : "radio_button_unchecked";
+        return `<div class="driver-timeline-item-v16 ${cls}"><span class="material-symbols-outlined">${icon}</span><span>${esc(item.label)}</span></div>`;
+      })
+      .join("")}</div>`;
+  };
+
+  window.pageDriverTrack = function pageDriverTrackV16() {
+    const row = getDriverTicketEffectiveRow();
+    const found = !!findDriverTicketRow(getDriverTicketPayloadFromUrl());
+    const status = String(row.status || "WAITING").toUpperCase();
+    const sla = getInboundSlaInfo(row);
+    const estimate = getUnloadingEstimateInfo(row);
+    const estimateText = row.start_unloading_at
+      ? estimate.estimateText || row.sla_finished_at || "-"
+      : "-";
+
+    return `<div class="min-h-[calc(100vh-80px)] flex items-center justify-center p-4">
+      <div class="glass-card rounded-2xl p-5 sm:p-6 w-full max-w-[720px] border border-outline-variant/50">
+        <div class="text-center mb-6">
+          <div class="text-[12px] uppercase tracking-[0.35em] text-on-surface-variant font-extrabold">Inbound CBT</div>
+          <h1 class="text-2xl font-extrabold text-on-surface mt-2">Status Tiket Driver</h1>
+          <div id="driver-track-live-badge" class="mt-3 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${found ? "bg-success/10 text-success border border-success/30" : "bg-warning/10 text-warning border border-warning/30"}">${found ? "LIVE DATA" : "PREVIEW / BELUM SYNC"}</div>
+        </div>
+        <div class="text-center border-y border-outline-variant/40 py-6">
+          <div class="text-[12px] uppercase tracking-[0.45em] text-on-surface-variant font-extrabold">Nomor Antrian Anda</div>
+          <div class="font-queue-id text-[56px] sm:text-[76px] leading-none text-primary font-black mt-3">${esc(row.queue_no || "-")}</div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+          <div class="rounded-xl bg-surface-container/50 border border-primary/20 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Status</div><div id="driver-track-status" class="font-bold text-2xl mt-2">${esc(status)}</div><div class="mt-1 text-xs font-bold text-on-surface-variant">Gate: <span id="driver-track-gate">${esc(row.gate || "-")}</span></div></div>
+          <div class="rounded-xl bg-surface-container/50 border border-tertiary/20 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Target SLA Inbound</div><div id="driver-track-est-finish" class="font-queue-id text-2xl text-tertiary mt-2">${esc(estimateText)}</div><div class="mt-1 text-xs text-on-surface-variant">Start unloading sampai PO terakhir DONE GR</div></div>
+          <div class="rounded-xl bg-surface-container/50 border border-outline-variant/30 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Checker Barang</div><div id="driver-track-checker-progress" class="font-queue-id text-xl mt-2">${esc(row.checker_progress || "0/0")}</div></div>
+          <div class="rounded-xl bg-surface-container/50 border border-outline-variant/30 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Proses GR</div><div id="driver-track-gr-progress" class="font-queue-id text-xl mt-2">${esc(row.gr_progress || "0/0")}</div></div>
+          <div class="rounded-xl bg-surface-container/50 border border-outline-variant/30 p-4 sm:col-span-2"><div class="text-[10px] uppercase font-bold text-on-surface-variant">SLA</div><div id="driver-track-sla-delta" class="font-queue-id text-xl mt-2 ${["LATE", "SLA MISS"].includes(sla.status) ? "text-error" : "text-success"}">${esc(sla.label || sla.status)}</div></div>
+        </div>
+        ${driverTimelineV16(row)}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5"><div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Jam Menunggu</div><div id="driver-track-waiting" class="font-queue-id text-2xl text-tertiary mt-2">${esc(driverWaitingLabel(row))}</div></div><div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Plat</div><div class="font-queue-id text-xl mt-2">${esc(row.plat_number || "-")}</div></div></div>
+        <div class="mt-4 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-2 text-sm"><div><b>Driver:</b> ${esc(row.driver_name || "-")}</div><div><b>Vendor:</b> ${esc(row.vendor_name || "-")}</div><div><b>PO:</b> ${esc(row.po_number || (row.ticket_type === "DROP-OFF" ? "DROP-OFF / TANPA PO" : "-"))}</div><div><b>Last Refresh:</b> <span id="driver-track-last-refresh">${esc(driverTrackLastRefreshAt || "-")}</span></div></div>
+        ${status === "EXPIRED" ? `<div class="mt-4 rounded-xl border border-error/30 bg-error/10 p-4 text-error font-bold">Tiket expired. Driver wajib registrasi ulang.</div>` : ""}
+        <button onclick="refreshDriverTrackLiveData(false)" class="mt-5 w-full bg-primary-container text-on-primary-container rounded-lg px-5 py-3 font-bold flex items-center justify-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh Status Sekarang</button>
+      </div>
+    </div>`;
+  };
+  try {
+    pageDriverTrack = window.pageDriverTrack;
+  } catch (error) {}
+
+  const refreshDriverTrackBeforeV16 = window.refreshDriverTrackDom;
+  window.refreshDriverTrackDom = function refreshDriverTrackDomV16() {
+    refreshDriverTrackBeforeV16?.();
+    const row = getDriverTicketEffectiveRow();
+    const status = document.getElementById("driver-track-status");
+    const gate = document.getElementById("driver-track-gate");
+    const checker = document.getElementById("driver-track-checker-progress");
+    const gr = document.getElementById("driver-track-gr-progress");
+    const timeline = document.getElementById("driver-track-timeline-v16");
+    const slaEl = document.getElementById("driver-track-sla-delta");
+
+    if (status)
+      status.textContent = String(row.status || "WAITING").toUpperCase();
+    if (gate) gate.textContent = row.gate || "-";
+    if (checker) checker.textContent = row.checker_progress || "0/0";
+    if (gr) gr.textContent = row.gr_progress || "0/0";
+    if (timeline) {
+      const holder = document.createElement("div");
+      holder.innerHTML = driverTimelineV16(row);
+      timeline.replaceWith(holder.firstElementChild);
+    }
+    if (slaEl) {
+      const sla = getInboundSlaInfo(row);
+      slaEl.textContent = sla.label || sla.status;
+      slaEl.className = `font-queue-id text-xl mt-2 ${["LATE", "SLA MISS"].includes(sla.status) ? "text-error" : "text-success"}`;
+    }
+  };
+  try {
+    refreshDriverTrackDom = window.refreshDriverTrackDom;
+  } catch (error) {}
 })();

@@ -505,13 +505,23 @@ function replaceOutputRowsInRawResponse(rows = []) {
 }
 
 function ticketIdentity(row) {
+  // Output form V15/V16 adalah 1 row per PO. ticket_id saja tidak unik karena
+  // seluruh PO dalam satu mobil memakai ticket_id yang sama. Prioritaskan
+  // ticket_po_id supaya hasil Start/Done Checker per PO tidak menimpa sibling PO.
+  const ticketPoId = String(row?.ticket_po_id || "").trim();
+  if (ticketPoId) return "ticket-po:" + ticketPoId;
+
   const ticketId = String(row?.ticket_id || "").trim();
+  const poNumber = String(row?.po_number || row?.po || "").trim();
+  if (ticketId && poNumber) {
+    return ("ticket-po-fallback:" + ticketId + "|" + poNumber).toUpperCase();
+  }
   if (ticketId) return "ticket:" + ticketId;
 
   return [
     "fallback",
     String(row?.queue_no || "").trim(),
-    String(row?.po_number || row?.po || "").trim(),
+    poNumber,
     normalizePlateValue(row?.plat_number || row?.["Licence Plate"] || ""),
   ]
     .join("|")
@@ -622,15 +632,15 @@ function normalizeQueueSequenceBySlot(queue = []) {
       : String(row.ticket_type || row.queue_no || "REG")
             .toUpperCase()
             .includes("DROP")
-        ? "DROP"
+        ? "DROP-OFF"
         : "REG";
 
     seqBySlot[slot] = (seqBySlot[slot] || 0) + 1;
 
     const existingQueueNo = String(row.queue_no || "").trim();
     const generatedQueueNo =
-      type === "DROP"
-        ? `DROP ${slot}-${seqBySlot[slot]}`
+      type === "DROP-OFF"
+        ? `DROP-OFF ${slot}-${seqBySlot[slot]}`
         : `${type} ${slot}-${seqBySlot[slot]}`;
 
     return {
@@ -1449,7 +1459,8 @@ function nextLocalQueueNoFromList(ticketType, slot, queue = []) {
 
   const nextSeq = maxSeq + 1;
 
-  if (type === "DROP") return `DROP ${slotText}-${nextSeq}`;
+  if (type === "DROP" || type === "DROP-OFF")
+    return `DROP-OFF ${slotText}-${nextSeq}`;
 
   return `${type} ${slotText}-${nextSeq}`;
 }
@@ -1500,11 +1511,11 @@ function nextLocalQueueNo(ticketType, slot) {
   const type = String(ticketType || "REG").toUpperCase();
   const slotText = String(slot || "3");
 
-  if (type === "DROP") {
+  if (type === "DROP" || type === "DROP-OFF") {
     const count =
       queue.filter((q) => String(q.queue_no || "").startsWith("DROP")).length +
       1;
-    return `DROP-${count}`;
+    return `DROP-OFF ${slotText}-${count}`;
   }
 
   const count =
@@ -1751,7 +1762,7 @@ async function submitSecurity(e) {
       const groupItems = poGroups[index] || poItems;
       const grouped = sumPoItems(groupItems);
       const rowSlot =
-        String(base.ticket_type || "").toUpperCase() === "DROP"
+        String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
           ? base.slot || grouped.slot || "3"
           : grouped.slot || base.slot || "3";
 
@@ -2705,7 +2716,7 @@ async function submitSecurity(e) {
       const groupItems = poGroups[index] || poItems;
       const grouped = sumPoItems(groupItems);
       const rowSlot =
-        String(base.ticket_type || "").toUpperCase() === "DROP"
+        String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
           ? base.slot || grouped.slot || "3"
           : grouped.slot || base.slot || "3";
 
@@ -3775,32 +3786,20 @@ async function submitSecurity(e) {
     );
     if (statuses.every((status) => status === "COMPLETED")) return "COMPLETED";
     if (statuses.some((status) => status === "EXPIRED")) return "EXPIRED";
-    if (
-      poRows.every(
-        (row) => String(row.gr_status || "").toUpperCase() === "DONE GR",
-      )
-    ) {
-      return statuses.includes("COMPLETED") ? "COMPLETED" : "DONE GR";
-    }
-    if (
-      poRows.every(
-        (row) => String(row.checker_status || "").toUpperCase() === "DONE",
-      )
-    )
-      return "WAITING GR";
-    if (
-      poRows.some((row) =>
-        ["CHECKING", "DONE"].includes(
-          String(row.checker_status || "").toUpperCase(),
-        ),
-      )
-    )
-      return "CHECKING";
-    if (statuses.some((status) => status === "WAITING CHECKER"))
-      return "WAITING CHECKER";
-    if (statuses.some((status) => status === "UNLOADING")) return "UNLOADING";
+
+    const hasFinishUnloading = poRows.some((row) => !!row.finish_unloading_at);
+    const hasStartUnloading =
+      poRows.some((row) => !!row.start_unloading_at) ||
+      statuses.some((status) => status === "UNLOADING");
+    const allDoneGr = poRows.every(
+      (row) => String(row.gr_status || "").toUpperCase() === "DONE GR",
+    );
+
+    if (hasFinishUnloading && allDoneGr) return "DONE GR";
+    if (hasFinishUnloading) return "WAITING GR";
+    if (hasStartUnloading) return "UNLOADING";
     if (statuses.some((status) => status === "CALLED")) return "CALLED";
-    return statuses[0] || "WAITING";
+    return "WAITING";
   }
 
   function groupOutputRowsV15(outputRows = []) {
@@ -4141,7 +4140,7 @@ async function submitSecurity(e) {
         const groupItems = poGroups[vehicleIndex] || poItems;
         const grouped = sumPoItems(groupItems);
         const rowSlot =
-          String(base.ticket_type || "").toUpperCase() === "DROP"
+          String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
             ? base.slot || grouped.slot || "3"
             : grouped.slot || base.slot || "3";
         const ticketId = `IBT-${Date.now().toString(36).toUpperCase()}-${String(vehicleIndex + 1).padStart(2, "0")}`;
@@ -4301,11 +4300,11 @@ async function submitSecurity(e) {
     const requested = String(body.status || "CALLED")
       .trim()
       .toUpperCase();
-    body.status = requested === "WAITING GR" ? "WAITING CHECKER" : requested;
+    body.status = requested;
     body.updated_at = formatDateTimeLocal(new Date());
     if (body.status === "CALLED") body.called_at = body.updated_at;
     if (body.status === "UNLOADING") body.start_unloading_at = body.updated_at;
-    if (body.status === "WAITING CHECKER") {
+    if (body.status === "WAITING GR") {
       body.finish_unloading_at = body.updated_at;
     }
     if (typeof getOperationalDateKey === "function") {
@@ -4322,7 +4321,7 @@ async function submitSecurity(e) {
           ? "Panggil driver ke gate?"
           : body.status === "UNLOADING"
             ? "Mulai unloading?"
-            : "Selesaikan unloading dan masuk proses checker barang?";
+            : "Finish unloading? Semua PO wajib Done Checking.";
 
       const approved = confirm(
         `${label}\n\nQueue: ${body.queue_no || "-"}\nPlat: ${body.plat_number || "-"}\nGate: ${body.gate || "-"}`,
@@ -4421,7 +4420,9 @@ async function submitSecurity(e) {
       } else if (body.status === "UNLOADING") {
         showToast("Unloading dimulai. SLA inbound mulai berjalan.");
       } else {
-        showToast("Unloading selesai. Ticket masuk Checker Barang.");
+        showToast(
+          "Finish unloading tersimpan. Ticket masuk WAITING GR / DONE GR.",
+        );
       }
 
       // Tutup bottom sheet seketika agar gate/button stale tidak bisa diklik lagi.
@@ -4652,5 +4653,344 @@ async function submitSecurity(e) {
     if (target === "COMPLETED")
       return handoverGrnTicketV15(ticket.ticket_id, btn);
     showToast("Done GR sekarang dilakukan per PO melalui Detail Waiting List.");
+  };
+})();
+
+/* ==========================================================================
+ * V16 — MANUAL SECURITY INPUT + CHECKER ACTION FEEDBACK
+ * ========================================================================== */
+(function installInboundV16ApiUi() {
+  if (window.__inboundV16ApiUiInstalled) return;
+  window.__inboundV16ApiUiInstalled = true;
+
+  function ticketTypeV16() {
+    const form = document.getElementById("security-form");
+    return String(form?.ticket_type?.value || "REG")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-");
+  }
+
+  window.lookupMultiplePo = function lookupMultiplePoV16(
+    poText,
+    vendorText = "",
+  ) {
+    const poNumbers = parsePoNumbers(poText);
+    const selectedVendor = String(vendorText || "").trim();
+    const selectedVendorKey = normalizeKey(selectedVendor);
+    const selectedVendorIsMaster = (state.options?.vendor_name || []).some(
+      (vendor) => normalizeKey(vendor) === selectedVendorKey,
+    );
+    const items = [];
+    const vendorMismatch = [];
+
+    for (const po of poNumbers) {
+      const key = normalizeKey(po);
+      const found = v2PoIndex?.[key];
+
+      if (!found) {
+        // PO manual tetap dibuat sebagai child row dengan qty/SKU default 0.
+        items.push({
+          po_number: po,
+          po_input: po,
+          vendor_name: selectedVendor,
+          slot: String(
+            document.querySelector('#security-form [name="slot"]')?.value ||
+              "3",
+          ),
+          total_po_qty: 0,
+          count_po_sku: 0,
+          data_source: "MANUAL",
+          is_manual_po: true,
+        });
+        continue;
+      }
+
+      const foundVendor = String(found.vendor_name || "").trim();
+      const foundVendorKey = normalizeKey(foundVendor);
+      const mismatch =
+        selectedVendorKey &&
+        foundVendorKey &&
+        !foundVendorKey.includes(selectedVendorKey) &&
+        !selectedVendorKey.includes(foundVendorKey);
+
+      // Vendor master yang berbeda tetap diblokir. Vendor manual boleh override.
+      if (mismatch && selectedVendorIsMaster) {
+        vendorMismatch.push({
+          ...found,
+          po_number: found.po_number || po,
+          po_input: po,
+          vendor_name: foundVendor,
+        });
+        continue;
+      }
+
+      items.push({
+        ...found,
+        po_number: found.po_number || po,
+        po_input: po,
+        vendor_name: mismatch ? selectedVendor : foundVendor || selectedVendor,
+        is_manual_vendor: mismatch,
+      });
+    }
+
+    const dropOff = ["DROP", "DROP-OFF"].includes(ticketTypeV16());
+    if (dropOff && !poNumbers.length) {
+      items.push({
+        po_number: "",
+        po_input: "",
+        vendor_name: selectedVendor,
+        slot: String(
+          document.querySelector('#security-form [name="slot"]')?.value || "3",
+        ),
+        total_po_qty: 0,
+        count_po_sku: 0,
+        data_source: "MANUAL",
+        is_drop_off: true,
+      });
+    }
+
+    const vendors = [
+      ...new Set(
+        items
+          .map((item) => String(item.vendor_name || "").trim())
+          .filter(Boolean),
+      ),
+    ];
+    const slots = [
+      ...new Set(
+        items.map((item) => String(item.slot || "").trim()).filter(Boolean),
+      ),
+    ];
+    const totalQty = items.reduce(
+      (sum, item) => sum + toNumberV2(item.total_po_qty),
+      0,
+    );
+    const totalSku = items.reduce(
+      (sum, item) => sum + toNumberV2(item.count_po_sku),
+      0,
+    );
+
+    return {
+      found: items.length > 0,
+      all_found:
+        items.length > 0 &&
+        vendorMismatch.length === 0 &&
+        (poNumbers.length > 0 || dropOff),
+      po_numbers: poNumbers,
+      items,
+      missing_po: [],
+      vendor_mismatch: vendorMismatch,
+      summary: {
+        po_number: poNumbers.join(", "),
+        po_numbers: poNumbers,
+        vendor_name: selectedVendor || vendors.join(", "),
+        vendor_names: vendors,
+        slot: ["1", "2", "3"].includes(slots[0]) ? slots[0] : "3",
+        slots,
+        total_po_qty: totalQty,
+        count_po_sku: totalSku,
+        found_count: items.length,
+        missing_count: 0,
+        vendor_mismatch_count: vendorMismatch.length,
+        manual_count: items.filter(
+          (item) =>
+            item.is_manual_po || item.is_manual_vendor || item.is_drop_off,
+        ).length,
+      },
+    };
+  };
+  try {
+    lookupMultiplePo = window.lookupMultiplePo;
+  } catch (error) {}
+
+  window.lookupPo = function lookupPoV16(silent = false) {
+    const form = document.getElementById("security-form");
+    if (!form) return null;
+
+    const poText = form.po_number?.value || "";
+    const vendorText = form.vendor_name?.value || "";
+    const dropOff = ["DROP", "DROP-OFF"].includes(ticketTypeV16());
+
+    if (!parsePoNumbers(poText).length && !dropOff) {
+      state.poLookup = null;
+      updatePoLookupUi(null);
+      return null;
+    }
+
+    const lookup = lookupMultiplePoV16(poText, vendorText);
+    state.poLookup = lookup;
+    updatePoLookupUi(lookup);
+
+    if (!silent) {
+      if (dropOff && !parsePoNumbers(poText).length) {
+        showToast("DROP-OFF aktif. PO Number tidak wajib.");
+      } else if (lookup.all_found) {
+        showToast(`${lookup.items.length} PO siap digunakan.`);
+      } else if (lookup.vendor_mismatch?.length) {
+        showToast(`${lookup.vendor_mismatch.length} PO berbeda vendor.`);
+      }
+    }
+
+    return lookup.found ? lookup : null;
+  };
+  try {
+    lookupPo = window.lookupPo;
+  } catch (error) {}
+
+  window.nextLocalQueueNoFromList = function nextLocalQueueNoFromListV16(
+    ticketType,
+    slot,
+    queue = [],
+  ) {
+    const rawType = String(ticketType || "REG")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-");
+    const type = rawType === "DROP" ? "DROP-OFF" : rawType;
+    const slotText = ["1", "2", "3"].includes(String(slot))
+      ? String(slot)
+      : "3";
+    const sameSlot = queue.filter(
+      (row) => String(row.slot || queueSlotValue(row) || "") === slotText,
+    );
+    const nextSeq =
+      sameSlot.reduce(
+        (max, row) =>
+          Math.max(
+            max,
+            queueSequenceNumber(row.queue_no || row.original_queue_no || ""),
+          ),
+        0,
+      ) + 1;
+    return `${type} ${slotText}-${nextSeq}`;
+  };
+  try {
+    nextLocalQueueNoFromList = window.nextLocalQueueNoFromList;
+  } catch (error) {}
+
+  // Finish unloading tidak boleh dikirim bila checker belum seluruhnya DONE.
+  const submitCheckerBeforeV16 = window.submitChecker;
+  window.submitChecker = async function submitCheckerV16(event) {
+    const form = event?.target;
+    const targetStatus = String(form?.status?.value || "").toUpperCase();
+    if (
+      targetStatus === "WAITING GR" &&
+      form?.dataset?.allCheckerDoneV16 !== "1"
+    ) {
+      const progress = form?.dataset?.checkerProgressV16 || "0/0";
+      showToast(`Belum bisa Finish Unloading. Done Checking baru ${progress}.`);
+      return;
+    }
+    return submitCheckerBeforeV16.apply(this, arguments);
+  };
+  try {
+    submitChecker = window.submitChecker;
+  } catch (error) {}
+
+  // Feedback Start/Done checker: status di modal langsung diperbarui dan modal
+  // dibuka ulang dari state hasil backend, bukan menunggu auto-sync 5 detik.
+  window.runCheckerPoActionV15 = async function runCheckerPoActionV16(
+    action,
+    ticket,
+    poIds,
+    checker,
+    btn = null,
+  ) {
+    if (!ticket || !poIds?.length || !checker) {
+      showToast("Pilih nama checker dan minimal satu PO.");
+      return null;
+    }
+
+    const oldHtml = btn?.innerHTML || "";
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      btn.classList.add("opacity-60", "cursor-wait");
+      btn.innerHTML =
+        '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span> Menyimpan...';
+    }
+
+    try {
+      const payload = {
+        ticket_id: ticket.ticket_id,
+        queue_no: ticket.original_queue_no || ticket.queue_no,
+        plat_number: ticket.plat_number,
+        operational_date: ticket.operational_date,
+        ticket_po_ids: poIds,
+        checker_id: checker.checker_id || checker.mp_id,
+        checker_name: checker.checker_name,
+        ...actorPayloadV15(),
+      };
+
+      const result =
+        action === "start"
+          ? await startCheckerPoToBackendV15(payload)
+          : await doneCheckerPoToBackendV15(payload);
+
+      applyBackendActionResult(result);
+      showToast(
+        action === "start"
+          ? `${poIds.length} PO mulai dikerjakan ${checker.checker_name}.`
+          : `${poIds.length} PO selesai checking dan siap GR.`,
+      );
+      renderPage("checker", false);
+      return result;
+    } catch (error) {
+      console.error(error);
+      showToast(`Proses checker gagal: ${error.message}`);
+      return null;
+    } finally {
+      if (btn && document.body.contains(btn)) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+        btn.classList.remove("opacity-60", "cursor-wait");
+        btn.innerHTML = oldHtml;
+      }
+    }
+  };
+
+  window.submitCheckerPoModalV15 = async function submitCheckerPoModalV16(
+    action,
+    btn,
+  ) {
+    const modal = document.getElementById("inbound-modal-v15");
+    const ticketId = modal?.dataset.ticketId;
+    const ticket = (state.dashboard?.queue || []).find(
+      (row) => String(row.ticket_id || "") === String(ticketId || ""),
+    );
+    const checkerId = document.getElementById("checker-mp-select-v15")?.value;
+    const checker = (
+      state.options?.inbound_mp ||
+      state.options?.checker_mp ||
+      []
+    ).find(
+      (item) => String(item.checker_id || item.mp_id) === String(checkerId),
+    );
+    const poIds = [
+      ...document.querySelectorAll(".checker-po-choice-v15:checked"),
+    ].map((input) => input.value);
+
+    if (!checker || !poIds.length) {
+      showToast("Pilih nama checker dan PO.");
+      return;
+    }
+
+    const result = await runCheckerPoActionV16(
+      action,
+      ticket,
+      poIds,
+      checker,
+      btn,
+    );
+    if (!result) return;
+
+    closeInboundModalV15?.();
+    setTimeout(() => {
+      openCheckerPoPanelV15?.(ticketId);
+      const select = document.getElementById("checker-mp-select-v15");
+      if (select) select.value = checkerId;
+    }, 0);
+    setTimeout(() => forceGlobalAutoSyncV11?.(), 150);
   };
 })();
