@@ -11815,3 +11815,386 @@ window.initShader = function initShaderDisabled() {
     refreshDriverTrackDom = window.refreshDriverTrackDom;
   } catch (error) {}
 })();
+
+/* ==========================================================================
+ * V16.2 — PO BATCH EXACT SELECTION + FLEET MASTER + MASTER-TICKET SLA
+ * ========================================================================== */
+(function installInboundV162FrontendPatch() {
+  if (window.__inboundV162FrontendInstalled) return;
+  window.__inboundV162FrontendInstalled = true;
+
+  const FLEET_OPTIONS_V16_2 = Object.freeze([
+    "TRONTON/FUSO",
+    "WING BOX",
+    "VAN",
+    "RODA 2",
+    "PICKUP",
+    "CDD",
+    "CDDL",
+    "CDE",
+    "CDEL",
+    "L300 BOX",
+    "DROP-OFF",
+    "MOBIL",
+  ]);
+
+  const FLEET_NOTES_V16_2 = Object.freeze({
+    "TRONTON/FUSO": "Tronton / Fuso",
+    "WING BOX": "Truck box besar dengan sayap samping",
+    VAN: "Grandmax, Van, dan Blindvan",
+    "RODA 2": "Motor, roda 3, dan orang jalan kaki",
+    PICKUP: "Kendaraan pickup",
+    CDD: "Kendaraan roda 6",
+    CDDL: "Kendaraan roda 6 dengan box lebih panjang",
+    CDE: "Kendaraan roda 4",
+    CDEL: "Kendaraan roda 4 dengan box lebih panjang",
+    "L300 BOX": "Traga / truck box kecil",
+    "DROP-OFF": "Barang drop only, baik vendor maupun marketplace",
+    MOBIL: "Semua mobil pribadi",
+  });
+
+  function canonicalFleetV162(value = "") {
+    const safe = String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s*\/\s*/g, "/")
+      .replace(/\s+/g, " ");
+
+    const aliases = {
+      FUSO: "TRONTON/FUSO",
+      TRONTON: "TRONTON/FUSO",
+      "TRONTON/FUSO": "TRONTON/FUSO",
+      WINGBOX: "WING BOX",
+      "WING BOX": "WING BOX",
+      GRANDMAX: "VAN",
+      GMX: "VAN",
+      BLINDVAN: "VAN",
+      "BLIND VAN": "VAN",
+      VAN: "VAN",
+      "KENDARAAN RODA 2": "RODA 2",
+      MOTOR: "RODA 2",
+      "RODA 3": "RODA 2",
+      "ORANG JALAN KAKI": "RODA 2",
+      "RODA 2": "RODA 2",
+      "PICK UP": "PICKUP",
+      PICKUP: "PICKUP",
+      "L300/PICK UP": "PICKUP",
+      "L300 / PICK UP": "PICKUP",
+      CDD: "CDD",
+      CDDL: "CDDL",
+      CDE: "CDE",
+      CDEL: "CDEL",
+      "L300 BOX": "L300 BOX",
+      DROP: "DROP-OFF",
+      "DROP OFF": "DROP-OFF",
+      "DROP-OFF": "DROP-OFF",
+      MOBIL: "MOBIL",
+    };
+
+    return aliases[safe] || safe;
+  }
+
+  state.options.fleet_type = [...FLEET_OPTIONS_V16_2];
+
+  window.normalizeFleetType = canonicalFleetV162;
+  try {
+    normalizeFleetType = window.normalizeFleetType;
+  } catch (error) {}
+
+  window.getFleetTypeOptions = function getFleetTypeOptionsV162() {
+    return [...FLEET_OPTIONS_V16_2];
+  };
+  try {
+    getFleetTypeOptions = window.getFleetTypeOptions;
+  } catch (error) {}
+
+  window.getFleetDisplayLabel = function getFleetDisplayLabelV162(type) {
+    return canonicalFleetV162(type) || "FLEET";
+  };
+  try {
+    getFleetDisplayLabel = window.getFleetDisplayLabel;
+  } catch (error) {}
+
+  window.getFleetNote = function getFleetNoteV162(type) {
+    const safe = canonicalFleetV162(type);
+    return (
+      FLEET_NOTES_V16_2[safe] || "Pilih tipe kendaraan sesuai kondisi aktual."
+    );
+  };
+  try {
+    getFleetNote = window.getFleetNote;
+  } catch (error) {}
+
+  window.getFleetImageUrl = function getFleetImageUrlV162(type) {
+    const safe = canonicalFleetV162(type);
+    const map = {
+      "TRONTON/FUSO": FLEET_IMAGE_DATA.fuso,
+      "WING BOX": FLEET_IMAGE_DATA.wingbox,
+      VAN: FLEET_IMAGE_DATA.grandmax,
+      "RODA 2": FLEET_IMAGE_DATA.roda2,
+      PICKUP: FLEET_IMAGE_DATA.l300Pickup,
+      CDD: FLEET_IMAGE_DATA.cdd,
+      CDDL: FLEET_IMAGE_DATA.cddl,
+      CDE: FLEET_IMAGE_DATA.cdd,
+      CDEL: FLEET_IMAGE_DATA.cddl,
+      "L300 BOX": FLEET_IMAGE_DATA.l300Pickup,
+      "DROP-OFF": FLEET_IMAGE_DATA.default,
+      MOBIL: FLEET_IMAGE_DATA.mobil,
+    };
+    return map[safe] || FLEET_IMAGE_DATA.default;
+  };
+  try {
+    getFleetImageUrl = window.getFleetImageUrl;
+  } catch (error) {}
+
+  // Target jam lama dipertahankan. Perubahan V16.2 hanya memperluas alias fleet
+  // dan memastikan SLA master berhenti setelah PO terakhir DONE GR.
+  window.getInboundSlaHours = function getInboundSlaHoursV162(row = {}) {
+    const fleet = canonicalFleetV162(
+      row.fleet_type || row["Vhiecle Type"] || "",
+    );
+    const sku =
+      Number(
+        row.ticket_total_sku || row.count_po_sku || row["Count SKU"] || 0,
+      ) || 0;
+
+    if (["TRONTON/FUSO", "WING BOX"].includes(fleet)) return 4;
+    if (["CDD", "CDDL", "CDE", "CDEL"].includes(fleet)) {
+      return sku > 40 ? 4 : 2;
+    }
+    if (["VAN", "PICKUP", "L300 BOX", "MOBIL"].includes(fleet)) {
+      return 1;
+    }
+    return 0;
+  };
+  try {
+    getInboundSlaHours = window.getInboundSlaHours;
+  } catch (error) {}
+
+  window.getMonitorStartTime = function getMonitorStartTimeV162(row = {}) {
+    return row.start_unloading_at || "";
+  };
+  try {
+    getMonitorStartTime = window.getMonitorStartTime;
+  } catch (error) {}
+
+  window.getElapsedMinutesForSla = function getElapsedMinutesForSlaV162(
+    row = {},
+  ) {
+    const status = String(row.status || "").toUpperCase();
+    if (status.includes("EXPIRED")) return 0;
+    const start = parseInboundDateSafe(row.start_unloading_at);
+    if (!start) return 0;
+    const end =
+      row.all_done_gr && row.done_gr_at
+        ? parseInboundDateSafe(row.done_gr_at) || new Date()
+        : new Date();
+    return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 60000));
+  };
+  try {
+    getElapsedMinutesForSla = window.getElapsedMinutesForSla;
+  } catch (error) {}
+
+  window.slaRowsLegend = function slaRowsLegendV162() {
+    return `<div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 text-sm text-on-surface-variant">
+      <div class="font-bold text-on-surface mb-2">Rule SLA Fleet</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div><b>TRONTON/FUSO</b> / <b>WING BOX</b>: 4 jam</div>
+        <div><b>CDD/CDDL/CDE/CDEL</b>: SKU ≤ 40 = 2 jam, SKU &gt; 40 = 4 jam</div>
+        <div><b>VAN/PICKUP/L300 BOX/MOBIL</b>: 1 jam</div>
+        <div>Durasi: Start Unloading sampai seluruh PO dalam satu mobil DONE GR.</div>
+      </div>
+    </div>`;
+  };
+  try {
+    slaRowsLegend = window.slaRowsLegend;
+  } catch (error) {}
+
+  // ------------------------------------------------------------------------
+  // PO batch selection: source of truth = checkbox yang benar-benar checked.
+  // Set lama tidak boleh membawa pilihan vendor/session sebelumnya.
+  // ------------------------------------------------------------------------
+  window.__poBatchSelection = new Set();
+  window.__poDropdownSuppressOpenUntil = 0;
+  let poBatchApplyingV162 = false;
+
+  function closePoDropdownV162() {
+    const dropdown = document.getElementById("po-dropdown");
+    if (!dropdown) return;
+    dropdown.classList.add("hidden");
+    dropdown.setAttribute("aria-hidden", "true");
+    dropdown.style.pointerEvents = "none";
+    setTimeout(() => {
+      if (dropdown) dropdown.style.pointerEvents = "";
+    }, 450);
+  }
+
+  function getCheckedPoValuesV162() {
+    return [
+      ...document.querySelectorAll(
+        "#po-dropdown-list input[data-po-batch-value]:checked",
+      ),
+    ]
+      .map((input) => poDecode(input.dataset.poBatchValue || ""))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  }
+
+  function updatePoBatchButtonV162() {
+    const values = getCheckedPoValuesV162();
+    window.__poBatchSelection = new Set(values);
+    const button = document.getElementById("po-batch-add-btn");
+    if (button) {
+      button.disabled = values.length === 0 || poBatchApplyingV162;
+      button.textContent = values.length
+        ? `Tambah ${values.length} PO`
+        : "Pilih PO";
+    }
+    return values;
+  }
+
+  window.togglePoBatchChoice = function togglePoBatchChoiceV162() {
+    window.__poDropdownInteracting = true;
+    updatePoBatchButtonV162();
+    setTimeout(() => {
+      window.__poDropdownInteracting = false;
+    }, 220);
+  };
+
+  const openPoDropdownBeforeV162 = window.openPoDropdown || openPoDropdown;
+  window.openPoDropdown = function openPoDropdownV162() {
+    if (performance.now() < Number(window.__poDropdownSuppressOpenUntil || 0)) {
+      closePoDropdownV162();
+      return;
+    }
+
+    const dropdown = document.getElementById("po-dropdown");
+    const openingNewSession = !!dropdown?.classList.contains("hidden");
+    if (openingNewSession) window.__poBatchSelection.clear();
+    document.getElementById("vendor-dropdown")?.classList.add("hidden");
+    openPoDropdownBeforeV162?.();
+  };
+  try {
+    openPoDropdown = window.openPoDropdown;
+  } catch (error) {}
+
+  window.applyPoBatchSelection = function applyPoBatchSelectionV162(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (poBatchApplyingV162) return;
+
+    const values = getCheckedPoValuesV162();
+    if (!values.length) {
+      showToast("Pilih minimal 1 PO.");
+      return;
+    }
+
+    poBatchApplyingV162 = true;
+    window.__poDropdownInteracting = true;
+    window.__poDropdownSuppressOpenUntil = performance.now() + 1200;
+
+    const button = document.getElementById("po-batch-add-btn");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Menambahkan...";
+    }
+
+    // Clear sebelum addPoChoice karena addPoChoice menjalankan filter ulang.
+    // Ini mencegah pilihan lama ikut masuk dan mencegah label jumlah random.
+    window.__poBatchSelection.clear();
+
+    const searchInput = document.getElementById("po-search-input");
+    if (searchInput) {
+      searchInput.value = "";
+      searchInput.blur();
+    }
+
+    closePoDropdownV162();
+    addPoChoice(values.join(", "));
+    closePoDropdownV162();
+    requestAnimationFrame(closePoDropdownV162);
+    setTimeout(closePoDropdownV162, 80);
+    setTimeout(closePoDropdownV162, 260);
+    setTimeout(closePoDropdownV162, 650);
+
+    setTimeout(() => {
+      poBatchApplyingV162 = false;
+      window.__poDropdownInteracting = false;
+    }, 500);
+  };
+
+  window.filterPoDropdown = function filterPoDropdownV162() {
+    const list = document.getElementById("po-dropdown-list");
+    if (!list) return;
+
+    const options = getFilteredPoOptions();
+    const query = String(
+      document.getElementById("po-search-input")?.value || "",
+    ).trim();
+    const vendorFilter = getSelectedVendorFilter();
+    const registeredCount = getRegisteredPoSet().size;
+
+    // Hapus pilihan yang sudah tidak ada di list aktif/vendor sekarang.
+    const available = new Set(options.map((po) => normalizeKey(po)));
+    window.__poBatchSelection = new Set(
+      [...window.__poBatchSelection].filter((po) =>
+        available.has(normalizeKey(po)),
+      ),
+    );
+
+    if (!options.length) {
+      const message = vendorFilter
+        ? query
+          ? "PO tidak ada untuk vendor/filter tersebut, atau PO sudah pernah daftar."
+          : "Belum ada PO available untuk vendor ini."
+        : "Pilih Vendor Name dulu supaya list PO terfilter.";
+      list.innerHTML = `<div class="px-3 py-3 text-[12px] text-on-surface-variant">${message}${registeredCount ? `<div class="mt-1 text-warning font-bold">${registeredCount} PO sudah terdaftar dan disembunyikan.</div>` : ""}</div>`;
+      return;
+    }
+
+    list.innerHTML = `<div class="space-y-1 pb-14">
+      ${options
+        .map((po) => {
+          const meta = getPoMeta(po);
+          const encoded = poEncode(po);
+          const checked = window.__poBatchSelection.has(po);
+          return `<label onpointerdown="window.__poDropdownInteracting=true; event.stopPropagation()" onclick="event.stopPropagation()" class="w-full px-3 py-3 rounded-lg hover:bg-primary/10 grid grid-cols-[auto_1fr_auto] gap-3 items-center border-b border-outline-variant/20 cursor-pointer touch-manipulation">
+            <input type="checkbox" data-po-batch-value="${encoded}" class="h-5 w-5 accent-primary" ${checked ? "checked" : ""} onchange="togglePoBatchChoice()" />
+            <span class="min-w-0"><span class="font-queue-id text-[12px] sm:text-[13px] break-all block">${esc(po)}</span><span class="text-[10px] text-on-surface-variant font-bold block">${esc(meta?.vendor_name || "-")}</span></span>
+            <span class="text-[10px] text-primary font-bold">SKU ${esc(meta?.count_po_sku || 0)}</span>
+          </label>`;
+        })
+        .join("")}
+      </div>
+      <div class="sticky bottom-0 bg-surface-container-lowest border-t border-outline-variant p-2">
+        <button id="po-batch-add-btn" type="button" ${window.__poBatchSelection.size ? "" : "disabled"} onpointerdown="event.preventDefault(); event.stopPropagation(); window.__poDropdownInteracting=true" onclick="applyPoBatchSelection(event)" class="w-full bg-primary-container text-on-primary-container rounded-lg px-4 py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed">${window.__poBatchSelection.size ? `Tambah ${window.__poBatchSelection.size} PO` : "Pilih PO"}</button>
+      </div>`;
+  };
+  try {
+    filterPoDropdown = window.filterPoDropdown;
+  } catch (error) {}
+
+  const handleVendorFilterBeforeV162 =
+    window.handleVendorFilterInput || handleVendorFilterInput;
+  window.handleVendorFilterInput = function handleVendorFilterInputV162(input) {
+    window.__poBatchSelection.clear();
+    closePoDropdownV162();
+    return handleVendorFilterBeforeV162?.(input);
+  };
+  try {
+    handleVendorFilterInput = window.handleVendorFilterInput;
+  } catch (error) {}
+
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      const dropdown = document.getElementById("po-dropdown");
+      if (!dropdown || dropdown.classList.contains("hidden")) return;
+      const poArea = event.target?.closest?.(
+        "#po-dropdown, #po-search-input, #po-selected-chips",
+      );
+      if (!poArea) closePoDropdownV162();
+    },
+    true,
+  );
+})();
