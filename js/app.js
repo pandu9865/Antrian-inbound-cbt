@@ -12408,3 +12408,386 @@ window.initShader = function initShaderDisabled() {
     });
   }
 })();
+
+/* ==========================================================================
+ * V16.5 — CHECKER SIMPLE FLOW
+ * UI saja: Memanggil → Bongkar & Checking → Selesai.
+ * Backend status tetap WAITING → CALLED → UNLOADING → WAITING GR → DONE GR → COMPLETED.
+ * ========================================================================== */
+(function installCheckerSimpleFlowV165() {
+  if (window.__checkerSimpleFlowV165Installed) return;
+  window.__checkerSimpleFlowV165Installed = true;
+
+  function normalizeCheckerSectionV165(section = "memanggil") {
+    const safe = String(section || "memanggil")
+      .trim()
+      .toLowerCase();
+    if (["unloading", "checking", "process", "bongkar"].includes(safe)) {
+      return "process";
+    }
+    if (safe === "selesai") return "selesai";
+    return "memanggil";
+  }
+
+  window.getCheckerSection = function getCheckerSectionV165() {
+    return normalizeCheckerSectionV165(checkerSectionState || "memanggil");
+  };
+  try {
+    getCheckerSection = window.getCheckerSection;
+  } catch (error) {}
+
+  window.setCheckerSection = function setCheckerSectionV165(
+    section = "memanggil",
+  ) {
+    checkerSectionState = normalizeCheckerSectionV165(section);
+    renderPage("checker", false);
+  };
+  try {
+    setCheckerSection = window.setCheckerSection;
+  } catch (error) {}
+
+  window.getCheckerSectionRows = function getCheckerSectionRowsV165(
+    section = getCheckerSection(),
+  ) {
+    const safe = normalizeCheckerSectionV165(section);
+    const rows = state.dashboard?.queue || [];
+    const filtered = rows.filter((row) => {
+      const status = String(row.status || "WAITING")
+        .trim()
+        .toUpperCase();
+      if (safe === "process") return status === "UNLOADING";
+      if (safe === "selesai") {
+        return ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(
+          status,
+        );
+      }
+      return ["WAITING", "CALLED"].includes(status);
+    });
+
+    return typeof sortQueueBySlotSequence === "function"
+      ? sortQueueBySlotSequence(filtered)
+      : filtered;
+  };
+  try {
+    getCheckerSectionRows = window.getCheckerSectionRows;
+  } catch (error) {}
+
+  window.checkerSectionCounts = function checkerSectionCountsV165() {
+    const rows = state.dashboard?.queue || [];
+    return {
+      memanggil: rows.filter((row) =>
+        ["WAITING", "CALLED"].includes(
+          String(row.status || "")
+            .trim()
+            .toUpperCase(),
+        ),
+      ).length,
+      process: rows.filter(
+        (row) =>
+          String(row.status || "")
+            .trim()
+            .toUpperCase() === "UNLOADING",
+      ).length,
+      selesai: rows.filter((row) =>
+        ["WAITING GR", "DONE GR", "COMPLETED", "EXPIRED"].includes(
+          String(row.status || "")
+            .trim()
+            .toUpperCase(),
+        ),
+      ).length,
+    };
+  };
+  try {
+    checkerSectionCounts = window.checkerSectionCounts;
+  } catch (error) {}
+
+  window.checkerSectionTabs = function checkerSectionTabsV165() {
+    const active = getCheckerSection();
+    const counts = checkerSectionCounts();
+    const tabs = [
+      ["memanggil", "Memanggil", counts.memanggil, "campaign"],
+      ["process", "Bongkar & Checking", counts.process, "inventory_2"],
+      ["selesai", "Selesai", counts.selesai, "task_alt"],
+    ];
+
+    return `<div class="checker-tabs-v15 sticky top-0 z-20 bg-surface/90 border border-outline-variant/40 rounded-2xl p-2 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        ${tabs
+          .map(([key, label, count, icon]) => {
+            const on = active === key;
+            return `<button type="button" onclick="setCheckerSection('${key}')" class="${on ? "bg-secondary-container text-on-secondary-container border-secondary-container" : "bg-surface-container/60 text-on-surface-variant border-outline-variant"} border rounded-xl px-3 py-3 font-bold text-xs flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-base">${icon}</span>
+              <span>${label}</span>
+              <span class="rounded-full px-2 py-0.5 text-[10px] ${on ? "bg-on-secondary-container/20" : "bg-surface-container-high"}">${count}</span>
+            </button>`;
+          })
+          .join("")}
+      </div>
+    </div>`;
+  };
+  try {
+    checkerSectionTabs = window.checkerSectionTabs;
+  } catch (error) {}
+
+  function getCheckerProgressV165(row = {}) {
+    const poRows = Array.isArray(row.po_rows) ? row.po_rows : [];
+    const total = Number(
+      row.checker_total_count || row.ticket_po_count || poRows.length || 0,
+    );
+    const done = Number(
+      row.checker_done_count ||
+        poRows.filter(
+          (po) => String(po.checker_status || "").toUpperCase() === "DONE",
+        ).length,
+    );
+    const checking = poRows.filter(
+      (po) => String(po.checker_status || "").toUpperCase() === "CHECKING",
+    ).length;
+    return { total, done, checking, allDone: total > 0 && done === total };
+  }
+
+  function getGrProgressV165(row = {}) {
+    const poRows = Array.isArray(row.po_rows) ? row.po_rows : [];
+    const total = Number(
+      row.gr_total_count || row.ticket_po_count || poRows.length || 0,
+    );
+    const done = Number(
+      row.gr_done_count ||
+        poRows.filter(
+          (po) => String(po.gr_status || "").toUpperCase() === "DONE GR",
+        ).length,
+    );
+    return { total, done };
+  }
+
+  function checkerProgressBarV165(done, total, label, barClass) {
+    const safeTotal = Math.max(1, Number(total || 0));
+    const safeDone = Math.max(0, Number(done || 0));
+    const pct = Math.min(100, Math.round((safeDone / safeTotal) * 100));
+    return `<div class="mt-3">
+      <div class="flex justify-between gap-3 text-[11px] font-bold text-on-surface-variant"><span>${esc(label)}</span><span>${safeDone}/${Number(total || 0)}</span></div>
+      <div class="h-2 rounded-full bg-surface-container-high mt-1 overflow-hidden"><div class="h-full rounded-full ${barClass}" style="width:${pct}%"></div></div>
+    </div>`;
+  }
+
+  function checkerProcessTicketCardV165(row = {}) {
+    const checker = getCheckerProgressV165(row);
+    const gr = getGrProgressV165(row);
+    const poCount = checker.total || row.po_rows?.length || 0;
+    const names = Array.isArray(row.checker_names)
+      ? row.checker_names.filter(Boolean).join(", ")
+      : "";
+    const waitMarkup = ticketWaitingMarkupV7(
+      row,
+      "font-queue-id text-tertiary mt-1",
+    );
+    const finishDisabled = !checker.allDone;
+    const finishLabel = checker.allDone
+      ? "Finish Unloading"
+      : `Menunggu Checker ${checker.done}/${checker.total}`;
+
+    return `<article class="checker-card rounded-2xl border border-outline-variant/40 bg-surface-container/45 p-4 shadow-sm" data-status="${esc(row.status)}" data-vendor="${esc(String(row.vendor_name || "").toLowerCase())}" data-queue="${esc(String(row.queue_no || "").toLowerCase())}" data-po="${esc(String(row.po_number || "").toLowerCase())}" data-plate="${esc(String(row.plat_number || "").toLowerCase())}">
+      <div class="flex items-start justify-between gap-3">
+        <div><div class="font-queue-id text-primary text-2xl">${esc(row.queue_no || "-")}</div><div class="text-[11px] uppercase text-on-surface-variant font-bold mt-1">${esc(row.vendor_name || "-")}</div></div>
+        ${checkerStatusPill(row.status)}
+      </div>
+      <div class="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Plat</div><div class="font-queue-id text-sm mt-1">${esc(row.plat_number || "-")}</div></div>
+        <div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Gate</div><div class="font-bold text-sm mt-1 break-all">${esc(row.gate || "-")}</div></div>
+        <div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">PO</div><div class="font-bold mt-1">${poCount} PO</div></div>
+        <div class="rounded-lg bg-surface-container/60 border border-outline-variant/30 p-3"><div class="text-[10px] uppercase text-on-surface-variant font-bold">Menunggu</div><div>${waitMarkup}</div></div>
+      </div>
+      ${checkerProgressBarV165(checker.done, checker.total, "Checking selesai", "bg-primary-container")}
+      ${checkerProgressBarV165(gr.done, gr.total, "GR selesai", "bg-success")}
+      <div class="mt-3 text-xs text-on-surface-variant"><b>Checker aktif:</b> ${esc(names || "Belum ada")}${checker.checking ? ` · ${checker.checking} sedang proses` : ""}</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
+        <button type="button" onclick="openCheckerPoPanelV15('${esc(row.ticket_id)}')" class="bg-primary-container text-on-primary-container px-4 py-3 rounded-xl font-bold text-xs inline-flex items-center justify-center gap-2"><span class="material-symbols-outlined text-base">fact_check</span>Kelola PO</button>
+        <button type="button" ${finishDisabled ? "disabled" : ""} onclick="finishUnloadingTicketV165('${esc(row.ticket_id)}', this)" class="${finishDisabled ? "bg-surface-container-high text-on-surface-variant opacity-60 cursor-not-allowed" : "bg-success/15 border border-success/30 text-success hover:brightness-110"} px-4 py-3 rounded-xl font-bold text-xs inline-flex items-center justify-center gap-2"><span class="material-symbols-outlined text-base">task_alt</span><span>${esc(finishLabel)}</span></button>
+      </div>
+    </article>`;
+  }
+
+  const checkerTicketCardBeforeV165 = window.checkerTicketCard;
+  window.checkerTicketCard = function checkerTicketCardV165(row = {}, i = 0) {
+    if (
+      getCheckerSection() === "process" &&
+      String(row.status || "")
+        .trim()
+        .toUpperCase() === "UNLOADING"
+    ) {
+      return checkerProcessTicketCardV165(row);
+    }
+    return checkerTicketCardBeforeV165
+      ? checkerTicketCardBeforeV165(row, i)
+      : `<article>${esc(row.queue_no || "-")}</article>`;
+  };
+  try {
+    checkerTicketCard = window.checkerTicketCard;
+  } catch (error) {}
+
+  window.finishUnloadingTicketV165 = async function finishUnloadingTicketV165(
+    ticketId,
+    btn = null,
+  ) {
+    const ticket = (state.dashboard?.queue || []).find(
+      (row) => String(row.ticket_id || "") === String(ticketId || ""),
+    );
+    if (!ticket) return showToast("Ticket tidak ditemukan. Refresh dulu.");
+
+    const checker = getCheckerProgressV165(ticket);
+    if (!checker.allDone) {
+      return showToast(
+        `Belum bisa Finish Unloading. Done Checking baru ${checker.done}/${checker.total}.`,
+      );
+    }
+
+    if (btn?.dataset?.saving === "1") return;
+    const oldHtml = btn?.innerHTML || "";
+    if (btn) {
+      btn.dataset.saving = "1";
+      btn.disabled = true;
+      btn.classList.add("opacity-60", "cursor-wait");
+      btn.innerHTML =
+        '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span><span>Menyimpan...</span>';
+    }
+
+    try {
+      const nowText = formatDateTimeLocal(new Date());
+      const actor = typeof getAuthUser === "function" ? getAuthUser() : null;
+      const body = {
+        ticket_id: ticket.ticket_id,
+        queue_no: ticket.original_queue_no || ticket.queue_no,
+        vendor_name: ticket.vendor_name || "",
+        fleet_type: ticket.fleet_type || "",
+        plat_number: normalizePlateValue(ticket.plat_number || ""),
+        gate: ticket.gate || "",
+        operational_date:
+          ticket.operational_date ||
+          (typeof getOperationalDateKey === "function"
+            ? getOperationalDateKey(new Date())
+            : ""),
+        status: "WAITING GR",
+        unload_sla: "ON PROCESS",
+        waiting_gr_at: nowText,
+        finish_unloading_at: nowText,
+        updated_at: nowText,
+        actor_role: String(actor?.role || "CHECKER").toUpperCase(),
+        actor_name: actor?.display_name || actor?.username || "",
+        actor_username: actor?.username || "",
+      };
+
+      const result = await updateCheckerToBackend(body);
+      if (typeof applyBackendActionResult === "function") {
+        applyBackendActionResult(result);
+      }
+      showToast("Finish Unloading berhasil.");
+      renderPage("checker", false);
+      setTimeout(() => forceGlobalAutoSyncV11?.(), 150);
+      return result;
+    } catch (error) {
+      console.error(error);
+      showToast(`Finish Unloading gagal: ${error.message}`);
+      return null;
+    } finally {
+      if (btn && document.body.contains(btn)) {
+        btn.dataset.saving = "0";
+        btn.disabled = false;
+        btn.classList.remove("opacity-60", "cursor-wait");
+        btn.innerHTML = oldHtml;
+      }
+    }
+  };
+
+  function checkerStandardActionPanelV165() {
+    return `<h3 class="font-headline-md text-headline-md mb-1">Tindakan Kendaraan</h3>
+      <p class="text-on-surface-variant mb-5">Pilih card untuk panggil driver atau mulai unloading.</p>
+      <div id="checker-form-home">
+        <form id="checker-form" onsubmit="submitChecker(event)">
+          <input type="hidden" name="ticket_id" />
+          <input type="hidden" name="queue_no" />
+          <input type="hidden" name="status" value="CALLED" />
+          <input type="hidden" name="unload_sla" value="ON PROCESS" />
+          <div class="grid grid-cols-1 gap-4">
+            ${textInput("vendor_name", "Vendor Name", "Pilih dari card", "", "", "required readonly")}
+            ${textInput("fleet_type", "Fleet Type", "Pilih dari card", "", "", "required readonly")}
+            ${textInput("plat_number", "Plat Number", "Pilih dari card", "", "", 'required readonly onblur="validatePlateInput(this)"')}
+            ${checkerGatePicker()}
+            <label class="flex flex-col gap-2"><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Status Berikutnya</span><div id="checker-status-box" class="bg-primary/15 border border-primary/30 rounded-lg px-4 py-3 text-primary font-bold flex items-center gap-2"><span id="checker-status-icon" class="material-symbols-outlined text-base">campaign</span><span id="checker-status-preview">PANGGIL DRIVER</span></div></label>
+          </div>
+          ${datalists()}
+          <button id="checker-submit-btn" class="mt-6 bg-primary-container text-on-primary-container px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:brightness-110 w-full justify-center" type="submit"><span class="material-symbols-outlined">save</span><span id="checker-submit-text">Panggil ke Gate</span></button>
+        </form>
+      </div>`;
+  }
+
+  function checkerProcessInfoPanelV165(rows = []) {
+    const checkerDone = rows.reduce(
+      (sum, row) => sum + getCheckerProgressV165(row).done,
+      0,
+    );
+    const checkerTotal = rows.reduce(
+      (sum, row) => sum + getCheckerProgressV165(row).total,
+      0,
+    );
+    const grDone = rows.reduce(
+      (sum, row) => sum + getGrProgressV165(row).done,
+      0,
+    );
+    const grTotal = rows.reduce(
+      (sum, row) => sum + getGrProgressV165(row).total,
+      0,
+    );
+
+    return `<h3 class="font-headline-md text-headline-md mb-1">Bongkar & Checking</h3>
+      <p class="text-on-surface-variant mb-5">Checking berjalan bersamaan dengan unloading. Kelola PO langsung dari card.</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl border border-primary/25 bg-primary/10 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Checking</div><div class="font-queue-id text-2xl text-primary mt-2">${checkerDone}/${checkerTotal}</div></div>
+        <div class="rounded-xl border border-success/25 bg-success/10 p-4"><div class="text-[10px] uppercase font-bold text-on-surface-variant">Done GR</div><div class="font-queue-id text-2xl text-success mt-2">${grDone}/${grTotal}</div></div>
+      </div>
+      <div class="mt-4 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 text-sm text-on-surface-variant"><b class="text-on-surface">Aturan Finish Unloading</b><br/>Tombol aktif setelah seluruh PO berstatus Done Checking. Done GR per PO tetap boleh berjalan lebih dulu dari Waiting List.</div>`;
+  }
+
+  function checkerFinishedInfoPanelV165() {
+    return `<h3 class="font-headline-md text-headline-md mb-1">Proses Checker Selesai</h3>
+      <p class="text-on-surface-variant mb-5">Ticket di sini sudah Finish Unloading, Done GR, Completed, atau Expired.</p>
+      <div class="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-4 text-sm text-on-surface-variant">Done GR dikerjakan Admin per PO dari Waiting List. Handover GRN dilakukan Security setelah semua PO Done GR.</div>`;
+  }
+
+  window.pageChecker = function pageCheckerV165() {
+    const section = getCheckerSection();
+    const rows = getCheckerSectionRows(section);
+    const sectionTitle =
+      section === "process"
+        ? "Bongkar & Checking"
+        : section === "selesai"
+          ? "Selesai"
+          : "Memanggil";
+    const rightPanel =
+      section === "memanggil"
+        ? checkerStandardActionPanelV165()
+        : section === "process"
+          ? checkerProcessInfoPanelV165(rows)
+          : checkerFinishedInfoPanelV165();
+
+    return `<div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
+      <div class="xl:col-span-9 glass-card rounded-xl p-4 sm:p-6">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <div><h3 class="font-headline-md text-headline-md mb-1">Checker Inbound</h3><p class="text-on-surface-variant">Flow sederhana: panggil → bongkar & checking → selesai.</p></div>
+          <button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-2 font-bold flex items-center gap-2 w-fit"><span class="material-symbols-outlined">refresh</span>Refresh</button>
+        </div>
+        ${checkerSectionTabs()}
+        <input id="checker-mobile-search" oninput="filterCheckerCards()" class="form-input mb-4" placeholder="Cari queue / plat / vendor / PO / checker..." />
+        <div class="flex items-center justify-between mb-3"><div class="font-bold text-on-surface">${esc(sectionTitle)}</div><div class="text-xs text-on-surface-variant">${num(rows.length)} ticket</div></div>
+        <div id="checker-card-list" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[72vh] overflow-y-auto pr-1">${rows.map((row, i) => checkerTicketCard(row, i)).join("") || `<div class="md:col-span-2 rounded-xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">Belum ada data di section ${esc(sectionTitle)}.</div>`}</div>
+      </div>
+      <div id="checker-desktop-action-panel" class="xl:col-span-3 glass-card rounded-xl p-4 sm:p-6">${rightPanel}</div>
+    </div>`;
+  };
+  try {
+    pageChecker = window.pageChecker;
+  } catch (error) {}
+
+  if (["unloading", "checking"].includes(String(checkerSectionState || ""))) {
+    checkerSectionState = "process";
+  }
+})();
