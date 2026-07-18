@@ -13157,3 +13157,394 @@ window.initShader = function initShaderDisabled() {
     }
   };
 })();
+
+/* ==========================================================================
+ * V18.1 — WAITING LIST FILTER + PAGINATION
+ * - Filter client-side: search, operational date, status, ticket type, slot, gate.
+ * - Maksimal row per halaman supaya Waiting List tetap ringan.
+ * - Filter tersimpan saat autosync / render ulang.
+ * ========================================================================== */
+(function installWaitingListFiltersV181() {
+  if (window.__waitingListFiltersV181Installed) return;
+  window.__waitingListFiltersV181Installed = true;
+
+  const STORAGE_KEY = "inbound_cbt_waiting_list_filters_v181";
+  const DEFAULT_FILTERS = {
+    search: "",
+    operationalDate: "",
+    status: "",
+    ticketType: "",
+    slot: "",
+    gate: "",
+    page: 1,
+    pageSize: 25,
+  };
+
+  function readFiltersV181() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      return {
+        ...DEFAULT_FILTERS,
+        ...saved,
+        page: Math.max(1, Number(saved.page || 1) || 1),
+        pageSize: [25, 50, 100].includes(Number(saved.pageSize))
+          ? Number(saved.pageSize)
+          : 25,
+      };
+    } catch (error) {
+      return { ...DEFAULT_FILTERS };
+    }
+  }
+
+  window.waitingListFiltersV181 = readFiltersV181();
+  window.__waitingListRenderedRowsV181 = [];
+  window.__waitingListFilteredRowsV181 = [];
+
+  function saveFiltersV181() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(window.waitingListFiltersV181 || DEFAULT_FILTERS),
+      );
+    } catch (error) {}
+  }
+
+  function cleanTextV181(value = "") {
+    return String(value || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function ticketTypeV181(row = {}) {
+    const raw = String(row.ticket_type || row.queue_no || "REG")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-");
+    if (raw.includes("VIP")) return "VIP";
+    if (raw.includes("DROP")) return "DROP-OFF";
+    return "REG";
+  }
+
+  function operationalDateV181(row = {}) {
+    const direct = String(
+      row.operational_date || row.raw?.operational_date || "",
+    ).trim();
+
+    if (direct) {
+      const ymd = direct.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+
+      const dmy = direct.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+      if (dmy) {
+        return `${dmy[3]}-${String(dmy[2]).padStart(2, "0")}-${String(
+          dmy[1],
+        ).padStart(2, "0")}`;
+      }
+    }
+
+    if (typeof window.getRowOperationalDateKey === "function") {
+      const value = window.getRowOperationalDateKey(row);
+      if (value) return String(value);
+    }
+
+    const parsed =
+      typeof parseInboundDateSafe === "function"
+        ? parseInboundDateSafe(
+            row.register_time || row.created_at || row.Timestamp || "",
+          )
+        : null;
+
+    if (!parsed) return "";
+    return [
+      parsed.getFullYear(),
+      String(parsed.getMonth() + 1).padStart(2, "0"),
+      String(parsed.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
+  function ticketSearchTextV181(row = {}) {
+    const poRows = Array.isArray(row.po_rows) ? row.po_rows : [];
+    const poText = poRows
+      .map((po) =>
+        [
+          po.po_number,
+          po.ticket_po_id,
+          po.checker_name,
+          po.checker_status,
+          po.gr_status,
+          po.actual_quantity,
+        ].join(" "),
+      )
+      .join(" ");
+
+    return cleanTextV181(
+      [
+        row.ticket_id,
+        row.queue_no,
+        row.vendor_name,
+        row.fleet_type,
+        row.plat_number,
+        row.po_number,
+        row.gate,
+        row.status,
+        row.slot,
+        ticketTypeV181(row),
+        poText,
+      ].join(" "),
+    );
+  }
+
+  function filterRowsV181(rows = []) {
+    const filters = window.waitingListFiltersV181 || DEFAULT_FILTERS;
+    const search = cleanTextV181(filters.search);
+
+    return (Array.isArray(rows) ? rows : []).filter((row) => {
+      if (search && !ticketSearchTextV181(row).includes(search)) return false;
+
+      if (
+        filters.operationalDate &&
+        operationalDateV181(row) !== filters.operationalDate
+      ) {
+        return false;
+      }
+
+      if (
+        filters.status &&
+        String(row.status || "")
+          .trim()
+          .toUpperCase() !== String(filters.status).trim().toUpperCase()
+      ) {
+        return false;
+      }
+
+      if (
+        filters.ticketType &&
+        ticketTypeV181(row) !== String(filters.ticketType).toUpperCase()
+      ) {
+        return false;
+      }
+
+      if (
+        filters.slot &&
+        String(row.slot || "").trim() !== String(filters.slot).trim()
+      ) {
+        return false;
+      }
+
+      if (
+        filters.gate &&
+        String(row.gate || "-").trim() !== String(filters.gate).trim()
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  function uniqueSortedV181(rows, getter, numeric = false) {
+    const values = [
+      ...new Set(
+        (rows || [])
+          .map(getter)
+          .map((value) => String(value || "").trim())
+          .filter((value) => value && value !== "-"),
+      ),
+    ];
+
+    return values.sort((a, b) =>
+      numeric
+        ? Number(a || 0) - Number(b || 0)
+        : a.localeCompare(b, "id", { numeric: true }),
+    );
+  }
+
+  function optionListV181(values, selected, allLabel) {
+    return `<option value="">${esc(allLabel)}</option>${values
+      .map(
+        (value) =>
+          `<option value="${esc(value)}" ${String(value) === String(selected) ? "selected" : ""}>${esc(value)}</option>`,
+      )
+      .join("")}`;
+  }
+
+  function filterPanelV181(allRows, filteredRows) {
+    const f = window.waitingListFiltersV181 || DEFAULT_FILTERS;
+    const statusOrder = [
+      "WAITING",
+      "CALLED",
+      "UNLOADING",
+      "WAITING GR",
+      "DONE GR",
+      "COMPLETED",
+      "EXPIRED",
+    ];
+    const existingStatus = new Set(
+      (allRows || []).map((row) => String(row.status || "").toUpperCase()),
+    );
+    const statuses = statusOrder.filter((status) => existingStatus.has(status));
+    uniqueSortedV181(allRows, (row) => row.status).forEach((status) => {
+      if (!statuses.includes(status.toUpperCase())) statuses.push(status);
+    });
+
+    const ticketTypes = uniqueSortedV181(allRows, ticketTypeV181);
+    const slots = uniqueSortedV181(allRows, (row) => row.slot, true);
+    const gates = uniqueSortedV181(allRows, (row) => row.gate);
+    const activeCount = [
+      f.search,
+      f.operationalDate,
+      f.status,
+      f.ticketType,
+      f.slot,
+      f.gate,
+    ].filter(Boolean).length;
+
+    return `<form id="waiting-list-filter-form-v181" onsubmit="applyWaitingListFiltersV181(event)" class="mb-5 rounded-xl border border-outline-variant/40 bg-surface-container/35 p-4">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+        <div>
+          <div class="font-bold text-on-surface flex items-center gap-2"><span class="material-symbols-outlined text-primary">filter_alt</span>Filter Waiting List ${activeCount ? `<span class="inline-flex rounded-full bg-primary/10 text-primary px-2 py-1 text-[10px]">${activeCount} aktif</span>` : ""}</div>
+          <div class="text-xs text-on-surface-variant mt-1">Menampilkan ${num(filteredRows.length)} dari ${num(allRows.length)} kendaraan. Maksimal ${num(f.pageSize)} baris per halaman.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="resetWaitingListFiltersV181()" class="thin-tab rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-1"><span class="material-symbols-outlined text-base">restart_alt</span>Reset</button>
+          <button type="submit" class="bg-primary-container text-on-primary-container rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-1"><span class="material-symbols-outlined text-base">search</span>Terapkan</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        <label class="sm:col-span-2 flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Cari</span><input id="waiting-filter-search-v181" class="form-input" value="${esc(f.search)}" placeholder="Queue, plat, vendor, PO, checker..." /></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Tanggal Operasional</span><input id="waiting-filter-date-v181" type="date" class="form-input" value="${esc(f.operationalDate)}" /></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Status</span><select id="waiting-filter-status-v181" class="form-select">${optionListV181(statuses, f.status, "Semua Status")}</select></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Tipe Ticket</span><select id="waiting-filter-type-v181" class="form-select">${optionListV181(ticketTypes, f.ticketType, "Semua Tipe")}</select></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Slot</span><select id="waiting-filter-slot-v181" class="form-select">${optionListV181(slots, f.slot, "Semua Slot")}</select></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Gate</span><select id="waiting-filter-gate-v181" class="form-select">${optionListV181(gates, f.gate, "Semua Gate")}</select></label>
+      </div>
+    </form>`;
+  }
+
+  function paginationV181(totalRows, page, pageSize) {
+    const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    const start = totalRows ? (page - 1) * pageSize + 1 : 0;
+    const end = Math.min(totalRows, page * pageSize);
+
+    return `<div class="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="text-xs text-on-surface-variant">Baris ${num(start)}–${num(end)} dari ${num(totalRows)} · Halaman ${num(page)}/${num(totalPages)}</div>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="flex items-center gap-2 text-xs text-on-surface-variant">Baris/halaman<select onchange="setWaitingListPageSizeV181(this.value)" class="form-select !w-auto !py-2"><option value="25" ${pageSize === 25 ? "selected" : ""}>25</option><option value="50" ${pageSize === 50 ? "selected" : ""}>50</option><option value="100" ${pageSize === 100 ? "selected" : ""}>100</option></select></label>
+        <button type="button" onclick="changeWaitingListPageV181(-1)" ${page <= 1 ? "disabled" : ""} class="thin-tab rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">Sebelumnya</button>
+        <button type="button" onclick="changeWaitingListPageV181(1)" ${page >= totalPages ? "disabled" : ""} class="thin-tab rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed">Berikutnya</button>
+      </div>
+    </div>`;
+  }
+
+  window.applyWaitingListFiltersV181 = function applyWaitingListFiltersV181(
+    event,
+  ) {
+    event?.preventDefault?.();
+    const f = window.waitingListFiltersV181 || { ...DEFAULT_FILTERS };
+    f.search =
+      document.getElementById("waiting-filter-search-v181")?.value?.trim() ||
+      "";
+    f.operationalDate =
+      document.getElementById("waiting-filter-date-v181")?.value || "";
+    f.status =
+      document.getElementById("waiting-filter-status-v181")?.value || "";
+    f.ticketType =
+      document.getElementById("waiting-filter-type-v181")?.value || "";
+    f.slot = document.getElementById("waiting-filter-slot-v181")?.value || "";
+    f.gate = document.getElementById("waiting-filter-gate-v181")?.value || "";
+    f.page = 1;
+    window.waitingListFiltersV181 = f;
+    saveFiltersV181();
+    renderPage("laporan", false);
+  };
+
+  window.resetWaitingListFiltersV181 = function resetWaitingListFiltersV181() {
+    const currentPageSize = Number(
+      window.waitingListFiltersV181?.pageSize || 25,
+    );
+    window.waitingListFiltersV181 = {
+      ...DEFAULT_FILTERS,
+      pageSize: currentPageSize,
+    };
+    saveFiltersV181();
+    renderPage("laporan", false);
+  };
+
+  window.changeWaitingListPageV181 = function changeWaitingListPageV181(
+    direction,
+  ) {
+    const f = window.waitingListFiltersV181 || { ...DEFAULT_FILTERS };
+    const total = window.__waitingListFilteredRowsV181?.length || 0;
+    const totalPages = Math.max(1, Math.ceil(total / f.pageSize));
+    f.page = Math.min(
+      totalPages,
+      Math.max(1, Number(f.page || 1) + Number(direction || 0)),
+    );
+    window.waitingListFiltersV181 = f;
+    saveFiltersV181();
+    renderPage("laporan", false);
+  };
+
+  window.setWaitingListPageSizeV181 = function setWaitingListPageSizeV181(
+    value,
+  ) {
+    const f = window.waitingListFiltersV181 || { ...DEFAULT_FILTERS };
+    const next = Number(value || 25);
+    f.pageSize = [25, 50, 100].includes(next) ? next : 25;
+    f.page = 1;
+    window.waitingListFiltersV181 = f;
+    saveFiltersV181();
+    renderPage("laporan", false);
+  };
+
+  const printWaitingListTicketBeforeV181 =
+    window.printWaitingListTicket ||
+    (typeof printWaitingListTicket === "function"
+      ? printWaitingListTicket
+      : null);
+
+  window.printWaitingListTicket = function printWaitingListTicketV181(index) {
+    if (String(state?.page || "") === "laporan") {
+      const row = window.__waitingListRenderedRowsV181?.[Number(index)];
+      if (row) {
+        printSecurityTickets([row]);
+        return;
+      }
+    }
+    return printWaitingListTicketBeforeV181?.(index);
+  };
+  try {
+    printWaitingListTicket = window.printWaitingListTicket;
+  } catch (error) {}
+
+  window.pageLaporan = function pageLaporanV181() {
+    const allRows = Array.isArray(state.dashboard?.report_preview)
+      ? state.dashboard.report_preview
+      : [];
+    const filteredRows = filterRowsV181(allRows);
+    const f = window.waitingListFiltersV181 || { ...DEFAULT_FILTERS };
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / f.pageSize));
+    f.page = Math.min(totalPages, Math.max(1, Number(f.page || 1)));
+    const startIndex = (f.page - 1) * f.pageSize;
+    const pageRows = filteredRows.slice(startIndex, startIndex + f.pageSize);
+
+    window.__waitingListFilteredRowsV181 = filteredRows;
+    window.__waitingListRenderedRowsV181 = pageRows;
+    window.waitingListFiltersV181 = f;
+    saveFiltersV181();
+
+    return `<div class="glass-card rounded-xl p-4 sm:p-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+        <div><h3 class="font-headline-md text-headline-md">Waiting List</h3><p class="text-on-surface-variant">Satu kendaraan tampil satu baris. Admin wajib mengisi Actual Qty per PO sebelum Done GR. Gunakan filter dan pagination agar data tetap ringan.</p></div>
+        <div class="flex flex-wrap gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div>
+      </div>
+      ${filterPanelV181(allRows, filteredRows)}
+      ${reportTable(pageRows)}
+      ${paginationV181(filteredRows.length, f.page, f.pageSize)}
+    </div>`;
+  };
+
+  try {
+    pageLaporan = window.pageLaporan;
+  } catch (error) {}
+})();
