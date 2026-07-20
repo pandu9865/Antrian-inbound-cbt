@@ -2030,7 +2030,7 @@ function pronounceQueueNo(queueNo = "") {
   if (!match) return text;
   const typeMap = {
     REG: "reguler",
-    VIP: "VIP",
+    VIP: "ViP",
     DROP: "drop off",
     "DROP-OFF": "drop off",
   };
