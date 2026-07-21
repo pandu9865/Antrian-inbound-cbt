@@ -10253,8 +10253,9 @@ window.initShader = function initShaderDisabled() {
       <section class="inbound-modal-panel-v15" role="dialog" aria-modal="true">
         <div class="inbound-modal-head-v15"><div><div class="font-queue-id text-primary text-2xl">${esc(ticket.queue_no || "-")}</div><div class="text-xs text-on-surface-variant mt-1">${esc(ticket.vendor_name || "-")} · ${esc(ticket.plat_number || "-")} · ${poRows.length} PO</div></div><button type="button" onclick="closeInboundModalV15()" class="thin-tab rounded-full p-2"><span class="material-symbols-outlined">close</span></button></div>
         <div class="p-4 sm:p-6 overflow-y-auto">
-          ${!mp.length ? `<div class="rounded-xl border border-error/30 bg-error/10 text-error p-4 mb-4 font-bold">Sheet <b>inbound mp</b> belum memiliki nama checker aktif.</div>` : ""}
-          <label class="flex flex-col gap-2 mb-4"><span class="text-xs uppercase font-bold text-on-surface-variant">Nama Checker</span><select id="checker-mp-select-v15" class="form-select"><option value="">Pilih nama checker</option>${mp.map((item) => `<option value="${esc(item.checker_id || item.mp_id)}">${esc(item.checker_name)}</option>`).join("")}</select></label>
+          ${!mp.length ? `<div class="rounded-xl border border-error/30 bg-error/10 text-error p-4 mb-4 font-bold">Master checker belum memiliki nama aktif.</div>` : ""}
+          <label class="flex flex-col gap-2 mb-2"><span class="text-xs uppercase font-bold text-on-surface-variant">Cari Nama Checker</span><input id="checker-mp-search-v15" type="search" class="form-input" placeholder="Ketik nama atau MP ID..." autocomplete="off" /></label>
+          <label class="flex flex-col gap-2 mb-4"><span class="text-xs uppercase font-bold text-on-surface-variant">Nama Checker</span><select id="checker-mp-select-v15" class="form-select" size="6"><option value="">Pilih nama checker</option>${mp.map((item) => `<option value="${esc(item.checker_id || item.mp_id)}">${esc(item.checker_name)} · ${esc(item.checker_id || item.mp_id)}</option>`).join("")}</select></label>
           <div class="space-y-3" id="checker-po-list-v15">
             ${poRows.map((po) => `<label class="checker-po-row-v15"><input type="checkbox" class="checker-po-choice-v15" value="${esc(po.ticket_po_id)}" /><div class="min-w-0 flex-1"><div class="font-queue-id text-sm break-all">${esc(po.po_number || "-")}</div><div class="text-[11px] text-on-surface-variant mt-1">Qty ${num(po.total_po_qty || 0)} · SKU ${num(po.count_po_sku || 0)}</div><div class="text-[11px] mt-1"><b>Checker:</b> ${esc(po.checker_name || "Belum dipilih")} · <b>Start:</b> ${esc(po.checker_started_at || "-")} · <b>Done:</b> ${esc(po.checker_done_at || "-")}</div></div><div class="flex flex-col items-end gap-1">${checkerPoStatusBadgeV15(po.checker_status)}<span class="text-[10px] text-on-surface-variant">GR: ${esc(po.gr_status || "PENDING")}</span></div></label>`).join("")}
           </div>
@@ -10263,6 +10264,15 @@ window.initShader = function initShaderDisabled() {
       </section>`;
     modal.dataset.ticketId = ticket.ticket_id;
     document.body.appendChild(modal);
+    const checkerSearch = document.getElementById("checker-mp-search-v15");
+    const checkerSelect = document.getElementById("checker-mp-select-v15");
+    checkerSearch?.addEventListener("input", () => {
+      const keyword = String(checkerSearch.value || "").trim().toLowerCase();
+      [...checkerSelect.options].forEach((option, index) => {
+        if (index === 0) return;
+        option.hidden = !!keyword && !option.text.toLowerCase().includes(keyword);
+      });
+    });
     document.body.classList.add("mobile-checker-action-sheet-open");
   };
 

@@ -153,6 +153,28 @@ function clean(value) {
   return String(value ?? "").trim();
 }
 
+const CHECKER_SEED = [
+  ["MP-001", "pandu"], ["MP-002", "adit"], ["MP-003", "prety"],
+  ["46916", "Ali Fahrudin"], ["46917", "Dian Ramdani"], ["46918", "SAMLAWI"],
+  ["42892", "Mohamad Nursalim"], ["9339", "A.reza faisal"], ["42889", "Abdul Wahid Rohman"],
+  ["48378", "Agim"], ["48371", "Agil"], ["49612", "Mulyadi"],
+  ["46117", "Septian Dinariyanto"], ["51839", "Sendi arya ramadhani"],
+  ["68843", "Alfian Dwi Prasetyo"], ["68844", "Syamsul Bahri"], ["69330", "Dede Rinaldo"],
+  ["70111", "Sabila rifqa aprilian"], ["73398", "Bayu prastio"],
+  ["75048", "Muhammad fauzan pradita nurramadhan"], ["75050", "Dedi hidayat"],
+  ["75049", "MUHAMAD ANSOR FAUJI"], ["75796", "Abd wahab"],
+  ["70725", "M RIZKI HIDAYATULLAH"], ["70730", "Antonius albert Gea"],
+  ["76925", "Khoirul imam alfad"], ["77465", "Septian Esa Putra"],
+  ["77474", "MUHAMMAD WAHYU JOYO NUGROHO"], ["77473", "Yoga Irawan"],
+  ["77587", "Muhammad Luthfi Alfian Zauhari"], ["77612", "yoga jatnika"],
+  ["77900", "M.Rizky.Ardiansyah"], ["77911", "Ganang akhtas saputra"],
+  ["77912", "Devrizal Oktavian"], ["77915", "Alung Ramadhan"],
+  ["77916", "Dimas Wibisono prasetyo"], ["78018", "Randi Wira Sakti"],
+  ["78039", "Junaedi Abdullah paqih"], ["78042", "Aditya Yusuf"],
+  ["78044", "Ibrohim"], ["78060", "Tulus Rachmawan Adiar"],
+  ["78155", "Aldi putra kurniawan"], ["78386", "RAFA RIZKI RAMADHAN"],
+];
+
 function databaseName() {
   const name = clean(process.env.MOTHERDUCK_DATABASE || "inbound_cbt_app");
   if (!/^[a-z][a-z0-9_]*$/i.test(name)) {
@@ -191,6 +213,11 @@ async function ensureSchema(client) {
     gate_name VARCHAR PRIMARY KEY, status VARCHAR NOT NULL DEFAULT 'KOSONG',
     ticket_id VARCHAR, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
+  await client.query(`CREATE TABLE IF NOT EXISTS checker_master (
+    mp_id VARCHAR PRIMARY KEY, checker_name VARCHAR NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`);
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS call_count INTEGER DEFAULT 0`);
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS last_call_at TIMESTAMP`);
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS expired_reason VARCHAR`);
@@ -218,6 +245,15 @@ async function ensureSchema(client) {
     count_sku BIGINT DEFAULT 0,
     synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
+
+  const checkerCount = await client.query(`SELECT COUNT(*) AS count FROM checker_master`);
+  if (Number(checkerCount.rows[0]?.count || 0) === 0) {
+    const values = CHECKER_SEED.map((_, index) => `($${index * 2 + 1}, $${index * 2 + 2}, TRUE)`).join(", ");
+    await client.query(
+      `INSERT INTO checker_master (mp_id, checker_name, active) VALUES ${values}`,
+      CHECKER_SEED.flat(),
+    );
+  }
 }
 
 function supersetConfig() {
@@ -432,7 +468,7 @@ async function listOperationalRows(client, ticketId = null) {
 }
 
 async function getAppState(client) {
-  const [master, outputForm] = await Promise.all([
+  const [master, outputForm, inboundMp] = await Promise.all([
     client.query(`SELECT
        po_number, vendor_name, '3' AS slot,
        request_quantity AS total_request_quantity,
@@ -442,13 +478,15 @@ async function getAppState(client) {
      FROM superset_po_master
      ORDER BY synced_at DESC, po_number ASC`),
     listOperationalRows(client),
+    client.query(`SELECT mp_id, mp_id AS checker_id, checker_name
+      FROM checker_master WHERE active = TRUE ORDER BY checker_name ASC`),
   ]);
   return {
     status: "success",
     timestamp: new Date().toISOString(),
     tablev2: master.rows,
     outputForm,
-    inboundMp: [],
+    inboundMp: inboundMp.rows,
   };
 }
 
@@ -580,6 +618,26 @@ async function updateTicketPos(client, body, action) {
            WHERE ticket_id = $1 AND ticket_po_id IN (${ids})`,
           [...params, clean(body.checker_id) || null, clean(body.checker_name) || null],
         );
+
+        const autoFinish = await client.query(
+          `UPDATE tickets
+           SET status = 'WAITING GR', done_unloading_at = COALESCE(done_unloading_at, CURRENT_TIMESTAMP),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE ticket_id = $1
+             AND status NOT IN ('WAITING GR', 'COMPLETED', 'EXPIRED')
+             AND EXISTS (SELECT 1 FROM ticket_pos WHERE ticket_id = $1)
+             AND NOT EXISTS (
+               SELECT 1 FROM ticket_pos
+               WHERE ticket_id = $1 AND UPPER(COALESCE(checker_status, 'PENDING')) <> 'DONE'
+             )
+           RETURNING ticket_id`,
+          [ticketId],
+        );
+        if (autoFinish.rowCount) {
+          await appendEvent(client, ticketId, "AUTO_FINISH_UNLOADING", body.actor, {
+            reason: "Semua PO selesai Done Checking",
+          });
+        }
       }
     } else if (action === "donegrpo") {
       const poId = clean(body.ticket_po_id);
