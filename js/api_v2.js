@@ -234,9 +234,12 @@ async function submitSecurityRowsToBackend(rows = []) {
         plat_number: master.plat_number,
         driver_name: master.driver_name,
         driver_phone: master.phone_number,
+        ktp_6_digit: master.ktp_6_digit,
         gate: master.gate,
         slot: master.slot,
         registered_by: master.registered_by,
+        unload_sla: master.unload_sla,
+        source: master.source || "Security Web",
       },
       pos: ticketRows.map((row) => ({
         ticket_po_id: row.ticket_po_id,

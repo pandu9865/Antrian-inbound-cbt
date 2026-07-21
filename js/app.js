@@ -7397,42 +7397,59 @@ function securityFormMatchesRowsForPrint(rows = []) {
     }
   };
 
+  const LEGACY_OUTPUT_HEADERS_V20 = [
+    "Timestamp", "ticket_id", "queue_no", "ticket_type", "slot", "fleet_type", "plat_number", "driver_name", "phone_number", "ktp_6_digit", "vendor_name", "po_number", "total_po_qty", "actual_quantity", "count_po_sku", "status", "gate", "unload_sla", "source", "created_at", "register_time", "called_at", "updated_at", "completed_at", "start_unloading_at", "driver_waiting_duration", "driver_waiting_minutes", "unloading_duration", "unloading_duration_minutes", "sla_target_hours", "sla_status", "wa_call_status", "wa_call_sent_at", "wa_call_error", "wa_call_provider", "wa_call_target", "call_count", "last_call_attempt_at", "expired_at", "expired_reason", "sla_finished_at", "operational_date", "data_source", "last_call_at", "waiting_gr_at", "done_gr_at", "handover_grn_at", "wa_handover_status", "wa_handover_sent_at", "wa_handover_error", "wa_handover_target", "ticket_po_id", "po_sequence", "ticket_po_count", "ticket_total_qty", "ticket_total_sku", "finish_unloading_at", "checker_id", "checker_name", "checker_status", "checker_started_at", "checker_done_at", "checker_started_by", "checker_done_by", "checker_duration", "checker_duration_minutes", "gr_status", "done_gr_by", "gr_wait_duration", "gr_wait_minutes", "inbound_sla_duration", "inbound_sla_minutes", "wa_ticket_status", "wa_ticket_sent_at", "wa_ticket_error", "wa_ticket_target",
+  ];
+
+  function durationExportV20(from, to) {
+    const start = parseInboundDateSafe(from);
+    const end = parseInboundDateSafe(to);
+    if (!start || !end || end < start) return { text: "", minutes: "" };
+    const minutes = Math.round((end - start) / 60000);
+    const hours = String(Math.floor(minutes / 60)).padStart(2, "0");
+    return { text: `${hours}:${String(minutes % 60).padStart(2, "0")}:00`, minutes };
+  }
+
+  function legacyOutputRowsV20(rows) {
+    const byTicket = new Map();
+    rows.forEach((row) => {
+      const id = String(row.ticket_id || "");
+      if (!byTicket.has(id)) byTicket.set(id, []);
+      byTicket.get(id).push(row);
+    });
+    return rows.map((row) => {
+      const pos = byTicket.get(String(row.ticket_id || "")) || [row];
+      const poSequence = Math.max(1, pos.findIndex((item) => item.ticket_po_id === row.ticket_po_id) + 1);
+      const ticketQty = pos.reduce((sum, item) => sum + Number(item.total_po_qty || 0), 0);
+      const ticketSku = pos.reduce((sum, item) => sum + Number(item.count_po_sku || 0), 0);
+      const finish = row.finish_unloading_at || "";
+      const driverWaiting = durationExportV20(row.created_at || row.register_time, row.start_unloading_at || finish);
+      const unloading = durationExportV20(row.start_unloading_at, finish);
+      const checker = durationExportV20(row.checker_started_at, row.checker_done_at);
+      const grWait = durationExportV20(row.checker_done_at, row.done_gr_at);
+      const inboundSla = durationExportV20(row.start_unloading_at, finish || row.done_gr_at);
+      return {
+        Timestamp: row.created_at || row.register_time || "", ticket_id: row.ticket_id || "", queue_no: row.queue_no || "", ticket_type: row.ticket_type || "", slot: row.slot || "", fleet_type: row.fleet_type || "", plat_number: row.plat_number || "", driver_name: row.driver_name || "", phone_number: row.phone_number || "", ktp_6_digit: row.ktp_6_digit || "", vendor_name: row.vendor_name || row.po_vendor_name || "", po_number: row.po_number || "", total_po_qty: row.total_po_qty || 0, actual_quantity: row.actual_quantity || 0, count_po_sku: row.count_po_sku || 0, status: row.status || "", gate: row.gate || "", unload_sla: row.unload_sla || "", source: row.source || "MotherDuck", created_at: row.created_at || "", register_time: row.register_time || row.created_at || "", called_at: row.called_at || "", updated_at: row.updated_at || row.po_updated_at || "", completed_at: String(row.status || "").toUpperCase() === "COMPLETED" ? finish : "", start_unloading_at: row.start_unloading_at || "", driver_waiting_duration: driverWaiting.text, driver_waiting_minutes: driverWaiting.minutes, unloading_duration: unloading.text, unloading_duration_minutes: unloading.minutes, sla_target_hours: "", sla_status: row.unload_sla || "", wa_call_status: "", wa_call_sent_at: "", wa_call_error: "", wa_call_provider: "", wa_call_target: "", call_count: row.call_count || 0, last_call_attempt_at: row.last_call_at || "", expired_at: row.expired_at || "", expired_reason: row.expired_reason || "", sla_finished_at: finish, operational_date: row.operational_date || "", data_source: "MotherDuck", last_call_at: row.last_call_at || "", waiting_gr_at: row.checker_done_at || "", done_gr_at: row.done_gr_at || "", handover_grn_at: row.handover_grn_at || "", wa_handover_status: "", wa_handover_sent_at: "", wa_handover_error: "", wa_handover_target: "", ticket_po_id: row.ticket_po_id || "", po_sequence: poSequence, ticket_po_count: pos.length, ticket_total_qty: ticketQty, ticket_total_sku: ticketSku, finish_unloading_at: finish, checker_id: row.checker_id || "", checker_name: row.checker_name || "", checker_status: row.checker_status || "", checker_started_at: row.checker_started_at || "", checker_done_at: row.checker_done_at || "", checker_started_by: "", checker_done_by: "", checker_duration: checker.text, checker_duration_minutes: checker.minutes, gr_status: row.gr_status || "", done_gr_by: "", gr_wait_duration: grWait.text, gr_wait_minutes: grWait.minutes, inbound_sla_duration: inboundSla.text, inbound_sla_minutes: inboundSla.minutes, wa_ticket_status: "", wa_ticket_sent_at: "", wa_ticket_error: "", wa_ticket_target: "",
+      };
+    });
+  }
+
   window.exportCsv = async function exportCsvV19() {
-    const columns = [
-      ["Operational Date", "operational_date"], ["Registered At", "register_time"],
-      ["Created At", "created_at"], ["Updated At", "updated_at"],
-      ["Ticket ID", "ticket_id"], ["Ticket PO ID", "ticket_po_id"],
-      ["Queue No", "queue_no"], ["Ticket Type", "ticket_type"],
-      ["Ticket Status", "status"], ["Registered By", "registered_by"],
-      ["Vendor", "vendor_name"], ["PO Vendor", "po_vendor_name"],
-      ["Fleet Type", "fleet_type"], ["Plate Number", "plat_number"],
-      ["Driver Name", "driver_name"], ["Driver Phone", "phone_number"],
-      ["Gate", "gate"], ["Slot", "slot"], ["Called At", "called_at"],
-      ["Arrived At", "arrived_at"], ["Start Unloading At", "start_unloading_at"],
-      ["Finish Unloading At", "finish_unloading_at"], ["Expired At", "expired_at"],
-      ["Expired Reason", "expired_reason"], ["Call Count", "call_count"],
-      ["Last Call At", "last_call_at"], ["PO Number", "po_number"],
-      ["Request Quantity", "total_po_qty"], ["Actual Quantity", "actual_quantity"],
-      ["SKU Count", "count_po_sku"], ["Checker ID", "checker_id"],
-      ["Checker Name", "checker_name"], ["Checker Status", "checker_status"],
-      ["Checker Started At", "checker_started_at"], ["Checker Done At", "checker_done_at"],
-      ["GR Status", "gr_status"], ["GR Done At", "done_gr_at"],
-      ["Handover GRN At", "handover_grn_at"],
-    ];
     try {
       showToast("Menyiapkan CSV detail dari MotherDuck...");
       const allRows = await motherDuckApiGet("export_rows");
       const visibleTickets = window.__waitingListFilteredRowsV181 || state.dashboard?.report_preview || [];
       const ticketIds = new Set(visibleTickets.map((ticket) => String(ticket.ticket_id || "")).filter(Boolean));
-      const rows = ticketIds.size
+      const selectedRows = ticketIds.size
         ? allRows.filter((row) => ticketIds.has(String(row.ticket_id || "")))
         : allRows;
-      if (!rows.length) return showToast("Tidak ada data sesuai filter.");
+      if (!selectedRows.length) return showToast("Tidak ada data sesuai filter.");
+      const rows = legacyOutputRowsV20(selectedRows);
 
       const escapeCsv = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
       const csv = [
-        columns.map(([label]) => escapeCsv(label)).join(","),
-        ...rows.map((row) => columns.map(([, key]) => escapeCsv(row[key])).join(",")),
+        LEGACY_OUTPUT_HEADERS_V20.map(escapeCsv).join(","),
+        ...rows.map((row) => LEGACY_OUTPUT_HEADERS_V20.map((key) => escapeCsv(row[key])).join(",")),
       ].join("\r\n");
       const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
       const link = document.createElement("a");

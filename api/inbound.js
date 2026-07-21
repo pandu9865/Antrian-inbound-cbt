@@ -247,6 +247,9 @@ async function ensureSchema(client) {
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS last_call_at TIMESTAMP`);
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS expired_reason VARCHAR`);
   await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS operational_date VARCHAR`);
+  await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS ktp_6_digit VARCHAR`);
+  await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS unload_sla VARCHAR`);
+  await client.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR`);
   await client.query(`ALTER TABLE ticket_pos ADD COLUMN IF NOT EXISTS gr_status VARCHAR DEFAULT 'PENDING'`);
   await client.query(`ALTER TABLE ticket_pos ADD COLUMN IF NOT EXISTS checker_id VARCHAR`);
   await client.query(`ALTER TABLE ticket_pos ADD COLUMN IF NOT EXISTS checker_name VARCHAR`);
@@ -474,7 +477,8 @@ async function listOperationalRows(client, ticketId = null) {
     `SELECT
        t.ticket_id, t.queue_no, t.ticket_type, t.status, t.vendor_name,
        t.fleet_type, t.plat_number, t.driver_name, t.driver_phone AS phone_number,
-       t.gate, t.slot, t.operational_date, t.registered_by, t.called_at, t.arrived_at,
+       t.gate, t.slot, t.operational_date, t.registered_by, t.ktp_6_digit, t.unload_sla,
+       t.source, t.called_at, t.arrived_at,
        t.start_unloading_at, t.done_unloading_at AS finish_unloading_at,
        t.expired_at, t.expired_reason, t.call_count, t.last_call_at,
        t.created_at AS register_time, t.created_at, t.updated_at,
@@ -483,7 +487,7 @@ async function listOperationalRows(client, ticketId = null) {
        p.count_sku AS count_po_sku, p.checker_status, p.gr_status,
        p.checker_id, p.checker_name, p.checking_started_at AS checker_started_at,
        p.checking_done_at AS checker_done_at, p.gr_done_at AS done_gr_at,
-       p.handover_grn_at
+       p.handover_grn_at, p.created_at AS po_created_at, p.updated_at AS po_updated_at
      FROM tickets t
      LEFT JOIN ticket_pos p ON p.ticket_id = t.ticket_id
      ${where}
@@ -555,15 +559,17 @@ async function createTicket(client, body) {
     await client.query(
       `INSERT INTO tickets (
         ticket_id, queue_no, ticket_type, status, vendor_name, fleet_type,
-        plat_number, driver_name, driver_phone, gate, slot, operational_date, registered_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        plat_number, driver_name, driver_phone, gate, slot, operational_date, registered_by,
+        ktp_6_digit, unload_sla, source
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         ticketId, queueNo, ticketType,
         clean(ticket.status) || "WAITING", clean(ticket.vendor_name) || null,
         clean(ticket.fleet_type) || null, clean(ticket.plat_number) || null,
         clean(ticket.driver_name) || null, clean(ticket.driver_phone) || null,
         clean(ticket.gate) || null, slot, operational.key,
-        clean(ticket.registered_by) || null,
+        clean(ticket.registered_by) || null, clean(ticket.ktp_6_digit) || null,
+        clean(ticket.unload_sla) || "ON PROCESS", clean(ticket.source) || "MotherDuck",
       ],
     );
 
