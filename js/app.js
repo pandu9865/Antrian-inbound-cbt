@@ -7355,6 +7355,81 @@ function securityFormMatchesRowsForPrint(rows = []) {
   });
 })();
 
+/* V19 — bulk Actual Qty and complete, filter-aware Waiting List export. */
+(function installWaitingListV19() {
+  if (window.__waitingListV19Installed) return;
+  window.__waitingListV19Installed = true;
+
+  window.doneGrBatchV19 = async function doneGrBatchV19() {
+    const inputs = [...document.querySelectorAll("[data-actual-qty-input-v18]")];
+    const byTicket = new Map();
+    for (const input of inputs) {
+      const quantity = Number(input.value || 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const poId = String(input.dataset.actualQtyInputV18 || "");
+      const ticket = (state.dashboard?.queue || []).find((row) =>
+        (row.po_rows || []).some((po) => String(po.ticket_po_id) === poId),
+      );
+      if (!ticket || !poId) continue;
+      if (!byTicket.has(ticket.ticket_id)) byTicket.set(ticket.ticket_id, { ticket, items: [] });
+      byTicket.get(ticket.ticket_id).items.push({ ticket_po_id: poId, actual_quantity: quantity });
+    }
+    if (!byTicket.size) {
+      return showToast("Isi Actual Qty lebih dari 0 pada PO yang ingin di-Done GR.");
+    }
+    const total = [...byTicket.values()].reduce((sum, item) => sum + item.items.length, 0);
+    if (!confirm(`Simpan Actual Qty dan Done GR untuk ${total} PO?`)) return;
+    try {
+      for (const { ticket, items } of byTicket.values()) {
+        await window.doneGrPosToBackendV19({
+          ticket_id: ticket.ticket_id,
+          queue_no: ticket.queue_no,
+          plat_number: ticket.plat_number,
+          operational_date: ticket.operational_date,
+          items,
+        });
+      }
+      showToast(`${total} PO berhasil Done GR.`);
+      await refreshDashboard();
+    } catch (error) {
+      console.error(error);
+      showToast(`Simpan Actual Qty gagal: ${error.message}`);
+    }
+  };
+
+  window.exportCsv = function exportCsvV19() {
+    const tickets = window.__waitingListFilteredRowsV181 || state.dashboard?.report_preview || [];
+    const headers = [
+      "Operational Date", "Created At", "Ticket ID", "Queue No", "Ticket Type", "Slot", "Ticket Status",
+      "Vendor", "Fleet Type", "Plate Number", "Driver", "Driver Phone", "Gate", "Called At",
+      "Start Unloading", "Finish Unloading", "PO Number", "PO Qty", "Actual Qty", "SKU Count",
+      "Checker ID", "Checker Name", "Checker Status", "Checker Started", "Checker Done",
+      "GR Status", "GR Done At", "Handover GRN At", "SLA Status", "SLA Target Hours",
+    ];
+    const value = (item) => String(item ?? "").replaceAll('"', '""');
+    const rows = tickets.flatMap((ticket) => (ticket.po_rows?.length ? ticket.po_rows : [{}]).map((po) => [
+      ticket.operational_date, ticket.created_at || ticket.register_time, ticket.ticket_id, ticket.queue_no,
+      ticket.ticket_type, ticket.slot, ticket.status, ticket.vendor_name, ticket.fleet_type, ticket.plat_number,
+      ticket.driver_name, ticket.driver_phone || ticket.phone_number, ticket.gate, ticket.called_at,
+      ticket.start_unloading_at, ticket.finish_unloading_at, po.po_number, po.total_po_qty,
+      po.actual_quantity, po.count_po_sku, po.checker_id, po.checker_name, po.checker_status,
+      po.checker_started_at, po.checker_done_at, po.gr_status, po.done_gr_at,
+      po.handover_grn_at || ticket.handover_grn_at, po.sla_status || ticket.sla_status, po.sla_target_hours || ticket.sla_target_hours,
+    ]));
+    if (!rows.length) return showToast("Tidak ada data sesuai filter.");
+    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${value(cell)}"`).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `waiting-list-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`${rows.length} baris PO diexport sesuai filter.`);
+  };
+  window.__exportCsvV19 = window.exportCsv;
+  try { exportCsv = window.exportCsv; } catch (error) {}
+})();
+
 /* ==========================================================================
  * MOBILE ANTI-MISTAP PATCH
  * - Swipe/scroll tidak dianggap klik.
@@ -10255,7 +10330,7 @@ window.initShader = function initShaderDisabled() {
         <div class="p-4 sm:p-6 overflow-y-auto">
           ${!mp.length ? `<div class="rounded-xl border border-error/30 bg-error/10 text-error p-4 mb-4 font-bold">Master checker belum memiliki nama aktif.</div>` : ""}
           <label class="flex flex-col gap-2 mb-2"><span class="text-xs uppercase font-bold text-on-surface-variant">Cari Nama Checker</span><input id="checker-mp-search-v15" type="search" class="form-input" placeholder="Ketik nama atau MP ID..." autocomplete="off" /></label>
-          <label class="flex flex-col gap-2 mb-4"><span class="text-xs uppercase font-bold text-on-surface-variant">Nama Checker</span><select id="checker-mp-select-v15" class="form-select" size="6"><option value="">Pilih nama checker</option>${mp.map((item) => `<option value="${esc(item.checker_id || item.mp_id)}">${esc(item.checker_name)} · ${esc(item.checker_id || item.mp_id)}</option>`).join("")}</select></label>
+          <label class="flex flex-col gap-2 mb-4"><span class="text-xs uppercase font-bold text-on-surface-variant">Nama Checker</span><select id="checker-mp-select-v15" class="form-select"><option value="">Pilih nama checker</option>${mp.map((item) => `<option value="${esc(item.checker_id || item.mp_id)}">${esc(item.checker_name)} · ${esc(item.checker_id || item.mp_id)}</option>`).join("")}</select><span class="text-[11px] text-on-surface-variant">Ketik nama atau MP ID di atas, lalu pilih dari dropdown.</span></label>
           <div class="space-y-3" id="checker-po-list-v15">
             ${poRows.map((po) => `<label class="checker-po-row-v15"><input type="checkbox" class="checker-po-choice-v15" value="${esc(po.ticket_po_id)}" /><div class="min-w-0 flex-1"><div class="font-queue-id text-sm break-all">${esc(po.po_number || "-")}</div><div class="text-[11px] text-on-surface-variant mt-1">Qty ${num(po.total_po_qty || 0)} · SKU ${num(po.count_po_sku || 0)}</div><div class="text-[11px] mt-1"><b>Checker:</b> ${esc(po.checker_name || "Belum dipilih")} · <b>Start:</b> ${esc(po.checker_started_at || "-")} · <b>Done:</b> ${esc(po.checker_done_at || "-")}</div></div><div class="flex flex-col items-end gap-1">${checkerPoStatusBadgeV15(po.checker_status)}<span class="text-[10px] text-on-surface-variant">GR: ${esc(po.gr_status || "PENDING")}</span></div></label>`).join("")}
           </div>
@@ -10286,7 +10361,7 @@ window.initShader = function initShaderDisabled() {
         : safe === "CHECKING"
           ? "text-primary bg-primary/10 border-primary/30"
           : "text-warning bg-warning/10 border-warning/30";
-    return `<span class="inline-flex rounded-full border px-2 py-1 text-[10px] font-extrabold ${cls}">${esc(safe)}</span>`;
+    return `<span data-checker-status="${esc(safe)}" class="inline-flex rounded-full border px-2 py-1 text-[10px] font-extrabold ${cls}">${esc(safe)}</span>`;
   };
 
   window.submitCheckerPoModalV15 = async function submitCheckerPoModalV15(
@@ -10299,11 +10374,25 @@ window.initShader = function initShaderDisabled() {
     const checker = getCheckerMpV15().find(
       (item) => String(item.checker_id || item.mp_id) === String(checkerId),
     );
+    const allowedStatus = action === "start" ? "PENDING" : "CHECKING";
     const poIds = [
       ...document.querySelectorAll(".checker-po-choice-v15:checked"),
-    ].map((input) => input.value);
-    if (!checker || !poIds.length)
-      return showToast("Pilih nama checker dan PO.");
+    ]
+      .filter((input) => {
+        const status = String(
+          input.closest(".checker-po-row-v15")?.querySelector("[data-checker-status]")?.dataset?.checkerStatus || "PENDING",
+        ).toUpperCase();
+        return status === allowedStatus;
+      })
+      .map((input) => input.value);
+    if (action === "start" && !checker)
+      return showToast("Pilih nama checker terlebih dahulu.");
+    if (!poIds.length)
+      return showToast(
+        action === "start"
+          ? "Start Checker hanya untuk PO berstatus PENDING."
+          : "Done Checker hanya untuk PO berstatus CHECKING.",
+      );
     const result = await runCheckerPoActionV15(
       action,
       ticket,
@@ -10407,7 +10496,7 @@ window.initShader = function initShaderDisabled() {
                 : "-";
             const detailId = `waiting-detail-${String(ticket.ticket_id).replace(/[^A-Za-z0-9_-]/g, "_")}`;
             return `<tr class="hover:bg-primary/5"><td class="px-4 py-3">${action}</td><td class="px-4 py-3"><button type="button" onclick="toggleWaitingDetailV16('${detailId}')" class="thin-tab rounded-lg px-3 py-2 text-xs font-bold">Detail PO</button></td><td class="px-4 py-3"><button onclick="printWaitingListTicket(${index})" class="thin-tab rounded-lg px-3 py-2 font-bold text-xs">Print</button></td><td class="px-4 py-3 text-sm whitespace-nowrap">${esc(ticket.created_at || "-")}</td><td class="px-4 py-3 font-queue-id text-primary">${esc(ticket.queue_no || "-")}</td><td class="px-4 py-3 min-w-[190px]">${esc(ticket.vendor_name || "-")}</td><td class="px-4 py-3">${esc(ticket.fleet_type || "-")}</td><td class="px-4 py-3 font-queue-id">${esc(ticket.plat_number || "-")}</td><td class="px-4 py-3">${ticket.po_rows?.length || 1}</td><td class="px-4 py-3">${esc(ticket.gate || "-")}</td><td class="px-4 py-3">${checkerStatusPill(status)}</td><td class="px-4 py-3 font-bold">${num(ticket.call_count || 0)}</td><td class="px-4 py-3 font-queue-id whitespace-nowrap">${esc(wait)}</td><td class="px-4 py-3">${num(ticket.total_po_qty || 0)}</td><td class="px-4 py-3 font-queue-id">${num(ticket.actual_quantity || 0)}</td><td class="px-4 py-3">${num(ticket.count_po_sku || 0)}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.checker_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap">${esc(ticket.gr_progress || "0/0")}</td><td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex rounded-full border px-2 py-1 text-xs font-bold ${sla.badgeClass}">${esc(sla.status)}</span></td></tr>
-          <tr id="${detailId}" class="hidden waiting-detail-row-v15"><td colspan="19" class="p-0"><div class="waiting-detail-panel-v15"><div class="flex flex-wrap gap-4 mb-4 text-xs"><span><b>Start Unloading:</b> ${esc(ticket.start_unloading_at || "-")}</span><span><b>Finish Unloading:</b> ${esc(ticket.finish_unloading_at || "-")}</span><span><b>Checker:</b> ${esc(ticket.checker_progress || "0/0")}</span><span><b>GR:</b> ${esc(ticket.gr_progress || "0/0")}</span><span><b>WA Ticket:</b> ${esc(ticket.wa_ticket_status || ticket.po_rows?.[0]?.wa_ticket_status || "-")}</span><span><b>WA Handover:</b> ${esc(ticket.wa_handover_status || ticket.po_rows?.[0]?.wa_handover_status || "-")}</span></div><div class="overflow-x-auto"><table class="po-detail-table-v15"><thead><tr><th>PO Number</th><th>PO Qty</th><th>Actual Qty</th><th>SKU</th><th>Checker</th><th>Status Checker</th><th>Start Checker</th><th>Done Checker</th><th>GR Status</th><th>Done GR</th><th>SLA</th><th>Action</th></tr></thead><tbody>${waitingPoDetailRowsV15(ticket, role)}</tbody></table></div></div></td></tr>`;
+          <tr id="${detailId}" class="hidden waiting-detail-row-v15"><td colspan="19" class="p-0"><div class="waiting-detail-panel-v15"><div class="flex flex-wrap gap-4 mb-4 text-xs"><span><b>Created:</b> ${esc(ticket.created_at || ticket.register_time || "-")}</span><span><b>Driver:</b> ${esc(ticket.driver_name || "-")} · ${esc(ticket.driver_phone || ticket.phone_number || "-")}</span><span><b>Ticket:</b> ${esc(ticket.ticket_type || "REG")} · Slot ${esc(ticket.slot || "-")} · Gate ${esc(ticket.gate || "-")}</span><span><b>Start Unloading:</b> ${esc(ticket.start_unloading_at || "-")}</span><span><b>Finish Unloading:</b> ${esc(ticket.finish_unloading_at || "-")}</span><span><b>Checker:</b> ${esc(ticket.checker_progress || "0/0")}</span><span><b>GR:</b> ${esc(ticket.gr_progress || "0/0")}</span><span><b>WA Ticket:</b> ${esc(ticket.wa_ticket_status || ticket.po_rows?.[0]?.wa_ticket_status || "-")}</span><span><b>WA Handover:</b> ${esc(ticket.wa_handover_status || ticket.po_rows?.[0]?.wa_handover_status || "-")}</span></div><div class="overflow-x-auto"><table class="po-detail-table-v15"><thead><tr><th>PO Number</th><th>PO Qty</th><th>Actual Qty</th><th>SKU</th><th>Checker</th><th>Status Checker</th><th>Start Checker</th><th>Done Checker</th><th>GR Status</th><th>Done GR</th><th>SLA</th><th>Action</th></tr></thead><tbody>${waitingPoDetailRowsV15(ticket, role)}</tbody></table></div></div></td></tr>`;
           })
           .join("") ||
         `<tr><td colspan="19" class="px-6 py-8 text-center text-on-surface-variant">Belum ada waiting list.</td></tr>`
@@ -13173,7 +13262,10 @@ window.initShader = function initShaderDisabled() {
   const DEFAULT_FILTERS = {
     search: "",
     operationalDate: "",
+    dateFrom: "",
+    dateTo: "",
     status: "",
+    grStatus: "",
     ticketType: "",
     slot: "",
     gate: "",
@@ -13309,6 +13401,10 @@ window.initShader = function initShaderDisabled() {
         return false;
       }
 
+      const rowDate = operationalDateV181(row);
+      if (filters.dateFrom && rowDate && rowDate < filters.dateFrom) return false;
+      if (filters.dateTo && rowDate && rowDate > filters.dateTo) return false;
+
       if (
         filters.status &&
         String(row.status || "")
@@ -13316,6 +13412,17 @@ window.initShader = function initShaderDisabled() {
           .toUpperCase() !== String(filters.status).trim().toUpperCase()
       ) {
         return false;
+      }
+
+      if (filters.grStatus) {
+        const poRows = Array.isArray(row.po_rows) ? row.po_rows : [];
+        const grStatuses = poRows.map((po) => String(po.gr_status || "PENDING").toUpperCase());
+        const wanted = String(filters.grStatus).toUpperCase();
+        if (wanted === "BELUM DONE GR") {
+          if (!grStatuses.some((status) => status !== "DONE GR")) return false;
+        } else if (!grStatuses.some((status) => status === wanted)) {
+          return false;
+        }
       }
 
       if (
@@ -13394,7 +13501,10 @@ window.initShader = function initShaderDisabled() {
     const activeCount = [
       f.search,
       f.operationalDate,
+      f.dateFrom,
+      f.dateTo,
       f.status,
+      f.grStatus,
       f.ticketType,
       f.slot,
       f.gate,
@@ -13411,10 +13521,13 @@ window.initShader = function initShaderDisabled() {
           <button type="submit" class="bg-primary-container text-on-primary-container rounded-lg px-4 py-2 text-sm font-bold flex items-center gap-1"><span class="material-symbols-outlined text-base">search</span>Terapkan</button>
         </div>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         <label class="sm:col-span-2 flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Cari</span><input id="waiting-filter-search-v181" class="form-input" value="${esc(f.search)}" placeholder="Queue, plat, vendor, PO, checker..." /></label>
         <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Tanggal Operasional</span><input id="waiting-filter-date-v181" type="date" class="form-input" value="${esc(f.operationalDate)}" /></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Dari Tanggal</span><input id="waiting-filter-date-from-v181" type="date" class="form-input" value="${esc(f.dateFrom)}" /></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Sampai Tanggal</span><input id="waiting-filter-date-to-v181" type="date" class="form-input" value="${esc(f.dateTo)}" /></label>
         <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Status</span><select id="waiting-filter-status-v181" class="form-select">${optionListV181(statuses, f.status, "Semua Status")}</select></label>
+        <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Status GR PO</span><select id="waiting-filter-gr-v181" class="form-select"><option value="">Semua GR</option><option value="BELUM DONE GR" ${f.grStatus === "BELUM DONE GR" ? "selected" : ""}>Belum Done GR</option><option value="WAITING GR" ${f.grStatus === "WAITING GR" ? "selected" : ""}>Waiting GR</option><option value="DONE GR" ${f.grStatus === "DONE GR" ? "selected" : ""}>Done GR</option></select></label>
         <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Tipe Ticket</span><select id="waiting-filter-type-v181" class="form-select">${optionListV181(ticketTypes, f.ticketType, "Semua Tipe")}</select></label>
         <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Slot</span><select id="waiting-filter-slot-v181" class="form-select">${optionListV181(slots, f.slot, "Semua Slot")}</select></label>
         <label class="flex flex-col gap-1"><span class="text-[10px] uppercase font-bold text-on-surface-variant">Gate</span><select id="waiting-filter-gate-v181" class="form-select">${optionListV181(gates, f.gate, "Semua Gate")}</select></label>
@@ -13447,8 +13560,11 @@ window.initShader = function initShaderDisabled() {
       "";
     f.operationalDate =
       document.getElementById("waiting-filter-date-v181")?.value || "";
+    f.dateFrom = document.getElementById("waiting-filter-date-from-v181")?.value || "";
+    f.dateTo = document.getElementById("waiting-filter-date-to-v181")?.value || "";
     f.status =
       document.getElementById("waiting-filter-status-v181")?.value || "";
+    f.grStatus = document.getElementById("waiting-filter-gr-v181")?.value || "";
     f.ticketType =
       document.getElementById("waiting-filter-type-v181")?.value || "";
     f.slot = document.getElementById("waiting-filter-slot-v181")?.value || "";
@@ -13537,7 +13653,7 @@ window.initShader = function initShaderDisabled() {
     return `<div class="glass-card rounded-xl p-4 sm:p-6">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div><h3 class="font-headline-md text-headline-md">Waiting List</h3><p class="text-on-surface-variant">Satu kendaraan tampil satu baris. Admin wajib mengisi Actual Qty per PO sebelum Done GR. Gunakan filter dan pagination agar data tetap ringan.</p></div>
-        <div class="flex flex-wrap gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div>
+        <div class="flex flex-wrap gap-2"><button onclick="refreshDashboard()" class="thin-tab rounded-lg px-4 py-3 font-bold flex items-center gap-2"><span class="material-symbols-outlined">refresh</span>Refresh</button><button onclick="doneGrBatchV19()" class="bg-secondary-container text-on-secondary-container px-4 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">playlist_add_check</span>Simpan Semua Actual Qty</button><button onclick="exportCsv()" class="bg-primary-container text-on-primary-container px-5 py-3 rounded-lg font-bold flex items-center gap-2"><span class="material-symbols-outlined">download</span>Export CSV</button></div>
       </div>
       ${filterPanelV181(allRows, filteredRows)}
       ${reportTable(pageRows)}
@@ -13549,3 +13665,9 @@ window.initShader = function initShaderDisabled() {
     pageLaporan = window.pageLaporan;
   } catch (error) {}
 })();
+
+// V19 export must win over legacy exports registered earlier in this file.
+if (window.__exportCsvV19) {
+  window.exportCsv = window.__exportCsvV19;
+  try { exportCsv = window.exportCsv; } catch (error) {}
+}

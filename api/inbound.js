@@ -126,7 +126,7 @@ function canUseAction(session, action) {
   if (!session) return false;
   const role = clean(session.role).toUpperCase();
   if (["state", "tickets", "create_ticket"].includes(action)) return ["SECURITY", "CHECKER", "SPV", "ADMIN", "DEVELOPER"].includes(role);
-  if (["updatechecker", "startcheckerpo", "donecheckerpo", "donegrpo", "handovergrn", "failcall", "update_ticket_status"].includes(action)) return ["CHECKER", "SPV", "ADMIN", "DEVELOPER"].includes(role);
+  if (["updatechecker", "startcheckerpo", "donecheckerpo", "donegrpo", "donegrpos", "handovergrn", "failcall", "update_ticket_status"].includes(action)) return ["CHECKER", "SPV", "ADMIN", "DEVELOPER"].includes(role);
   return false;
 }
 
@@ -642,23 +642,32 @@ async function updateTicketPos(client, body, action) {
       const params = [ticketId, ...poIds];
       const ids = poIds.map((_, index) => `$${index + 2}`).join(",");
       if (action === "startcheckerpo") {
-        await client.query(
+        const started = await client.query(
           `UPDATE ticket_pos SET checker_id = $${params.length + 1}, checker_name = $${params.length + 2},
              checker_status = 'CHECKING', checking_started_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
-           WHERE ticket_id = $1 AND ticket_po_id IN (${ids})`,
+           WHERE ticket_id = $1 AND ticket_po_id IN (${ids})
+             AND UPPER(COALESCE(checker_status, 'PENDING')) = 'PENDING'
+           RETURNING ticket_po_id`,
           [...params, clean(body.checker_id) || null, clean(body.checker_name) || null],
         );
+        if (started.rowCount !== poIds.length) {
+          throw new Error("Ada PO yang sudah sedang atau selesai checking. Refresh data lalu pilih PO PENDING saja.");
+        }
         await client.query(`UPDATE tickets SET status = 'UNLOADING', start_unloading_at = COALESCE(start_unloading_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE ticket_id = $1`, [ticketId]);
       } else {
-        await client.query(
-          `UPDATE ticket_pos SET checker_id = $${params.length + 1}, checker_name = $${params.length + 2},
-             checker_status = 'DONE', checking_done_at = CURRENT_TIMESTAMP,
+        const finished = await client.query(
+          `UPDATE ticket_pos SET checker_status = 'DONE', checking_done_at = CURRENT_TIMESTAMP,
              gr_status = CASE WHEN gr_status = 'DONE GR' THEN gr_status ELSE 'WAITING GR' END,
              updated_at = CURRENT_TIMESTAMP
-           WHERE ticket_id = $1 AND ticket_po_id IN (${ids})`,
-          [...params, clean(body.checker_id) || null, clean(body.checker_name) || null],
+           WHERE ticket_id = $1 AND ticket_po_id IN (${ids})
+             AND UPPER(COALESCE(checker_status, 'PENDING')) = 'CHECKING'
+           RETURNING ticket_po_id`,
+          params,
         );
+        if (finished.rowCount !== poIds.length) {
+          throw new Error("Done Checker hanya berlaku untuk PO berstatus CHECKING. Refresh data terlebih dahulu.");
+        }
 
         const autoFinish = await client.query(
           `UPDATE tickets
@@ -688,6 +697,24 @@ async function updateTicketPos(client, body, action) {
            updated_at = CURRENT_TIMESTAMP WHERE ticket_id = $1 AND ticket_po_id = $2`,
         [ticketId, poId, Number(body.actual_quantity || 0)],
       );
+    } else if (action === "donegrpos") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      if (!items.length) throw new Error("Minimal satu Actual Qty wajib diisi.");
+      for (const item of items) {
+        const poId = clean(item.ticket_po_id);
+        const quantity = Number(item.actual_quantity || 0);
+        if (!poId || !Number.isFinite(quantity) || quantity <= 0) {
+          throw new Error("Setiap Actual Qty harus lebih dari 0.");
+        }
+        await client.query(
+          `UPDATE ticket_pos SET actual_quantity = $3, gr_status = 'DONE GR', gr_done_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+           WHERE ticket_id = $1 AND ticket_po_id = $2
+             AND UPPER(COALESCE(checker_status, 'PENDING')) = 'DONE'
+             AND UPPER(COALESCE(gr_status, 'PENDING')) <> 'DONE GR'`,
+          [ticketId, poId, quantity],
+        );
+      }
     } else if (action === "handovergrn") {
       await client.query(`UPDATE ticket_pos SET handover_grn_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = $1`, [ticketId]);
       await client.query(`UPDATE tickets SET status = 'COMPLETED', done_unloading_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = $1`, [ticketId]);
@@ -779,7 +806,7 @@ module.exports = async (req, res) => {
       if (req.method === "POST" && action === "update_ticket_status") {
         return json(res, 200, { ok: true, data: await updateTicketStatus(client, body) });
       }
-      if (req.method === "POST" && ["updatechecker", "startcheckerpo", "donecheckerpo", "donegrpo", "handovergrn", "failcall"].includes(action)) {
+      if (req.method === "POST" && ["updatechecker", "startcheckerpo", "donecheckerpo", "donegrpo", "donegrpos", "handovergrn", "failcall"].includes(action)) {
         return json(res, 200, { ok: true, data: await updateTicketPos(client, body, action) });
       }
 

@@ -148,6 +148,7 @@ async function apiPostV2(action, payload = {}) {
       "startCheckerPo",
       "doneCheckerPo",
       "doneGrPo",
+      "doneGrPos",
       "handoverGrn",
       "failCall",
     ].includes(action)
@@ -1894,7 +1895,7 @@ async function submitSecurity(e) {
       const rowSlot =
         String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
           ? base.slot || grouped.slot || "3"
-          : grouped.slot || base.slot || "3";
+          : base.slot || grouped.slot || "3";
 
       const driver = pickMultiValue(driverList, index);
       const phone = pickMultiValue(phoneList, index);
@@ -2858,7 +2859,7 @@ async function submitSecurity(e) {
       const rowSlot =
         String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
           ? base.slot || grouped.slot || "3"
-          : grouped.slot || base.slot || "3";
+          : base.slot || grouped.slot || "3";
 
       const row = {
         ...base,
@@ -3749,6 +3750,10 @@ async function submitSecurity(e) {
     return apiPostV2("doneGrPo", body);
   };
 
+  window.doneGrPosToBackendV19 = function doneGrPosToBackendV19(body = {}) {
+    return apiPostV2("doneGrPos", body);
+  };
+
   window.handoverGrnToBackendV15 = function handoverGrnToBackendV15(body = {}) {
     return apiPostV2("handoverGrn", body);
   };
@@ -4308,7 +4313,7 @@ async function submitSecurity(e) {
         const rowSlot =
           String(base.ticket_type || "").toUpperCase() === "DROP-OFF"
             ? base.slot || grouped.slot || "3"
-            : grouped.slot || base.slot || "3";
+            : base.slot || grouped.slot || "3";
         const ticketId = `IBT-${Date.now().toString(36).toUpperCase()}-${String(vehicleIndex + 1).padStart(2, "0")}`;
         const queueNo = nextLocalQueueNoFromList(
           base.ticket_type,
@@ -5548,21 +5553,25 @@ async function submitSecurity(e) {
     checker,
     btn = null,
   ) {
-    if (!ticket || !poIds?.length || !checker) {
-      showToast("Pilih nama checker dan minimal satu PO.");
+    const isStart = action === "start";
+    if (!ticket || !poIds?.length || (isStart && !checker)) {
+      showToast(
+        isStart
+          ? "Pilih nama checker dan minimal satu PO."
+          : "Pilih minimal satu PO yang sedang CHECKING.",
+      );
       return null;
     }
 
     const now = nowV182();
-    const isStart = action === "start";
     const payload = {
       ticket_id: ticket.ticket_id,
       queue_no: ticket.original_queue_no || ticket.queue_no,
       plat_number: ticket.plat_number,
       operational_date: ticket.operational_date,
       ticket_po_ids: poIds,
-      checker_id: checker.checker_id || checker.mp_id,
-      checker_name: checker.checker_name,
+      checker_id: checker?.checker_id || checker?.mp_id || "",
+      checker_name: checker?.checker_name || "",
       ...actorV182(),
     };
 
@@ -5586,8 +5595,8 @@ async function submitSecurity(e) {
                   updated_at: now,
                 }
               : {
-                  checker_id: payload.checker_id,
-                  checker_name: payload.checker_name,
+                  checker_id: cellV182(row, ["checker_id"], ""),
+                  checker_name: cellV182(row, ["checker_name"], ""),
                   checker_status: "DONE",
                   checker_done_at: now,
                   checker_done_by: payload.actor_name || payload.actor_username,
@@ -5943,4 +5952,19 @@ async function submitSecurity(e) {
     const slot = event.target?.closest?.('#security-form [name="slot"]');
     if (slot) slot.dataset.manualSelection = "true";
   });
+})();
+
+/* V19 — setelah Mulai Bongkar berhasil, tampilkan langsung section Bongkar & Checking. */
+(function installCheckerSectionTransitionV19() {
+  const submitCheckerBeforeV19 = window.submitChecker;
+  if (typeof submitCheckerBeforeV19 !== "function") return;
+  window.submitChecker = async function submitCheckerV19(event) {
+    const requested = String(event?.target?.status?.value || "").toUpperCase();
+    const result = await submitCheckerBeforeV19.apply(this, arguments);
+    if (requested === "UNLOADING" && result !== null) {
+      window.setCheckerSection?.("process");
+    }
+    return result;
+  };
+  try { submitChecker = window.submitChecker; } catch (error) {}
 })();
