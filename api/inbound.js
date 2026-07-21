@@ -59,6 +59,12 @@ function isAuthorized(req) {
   return Boolean(expected && supplied && supplied === expected);
 }
 
+function isCronAuthorized(req) {
+  const secret = clean(process.env.CRON_SECRET);
+  const authorization = clean(req.headers.authorization);
+  return Boolean(secret && authorization === `Bearer ${secret}`);
+}
+
 function cookieValue(req, name) {
   const prefix = `${name}=`;
   return String(req.headers.cookie || "")
@@ -740,8 +746,11 @@ module.exports = async (req, res) => {
       }
 
       const apiKeyValid = isAuthorized(req);
+      const cronSync = req.method === "GET" && action === "cron_sync_superset";
       if (action === "sync_superset_pos") {
         if (!apiKeyValid) return json(res, 401, { ok: false, message: "Unauthorized" });
+      } else if (cronSync) {
+        if (!isCronAuthorized(req)) return json(res, 401, { ok: false, message: "Unauthorized" });
       } else {
         const session = readSession(req);
         if (!canUseAction(session, action)) {
@@ -755,6 +764,9 @@ module.exports = async (req, res) => {
 
       if (req.method === "GET" && action === "tickets") {
         return json(res, 200, { ok: true, data: await listTickets(client, clean(req.query.status) || null) });
+      }
+      if (cronSync) {
+        return json(res, 200, { ok: true, data: await syncSupersetPoMaster(client) });
       }
 
       const body = requestBody;
