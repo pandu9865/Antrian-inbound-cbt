@@ -350,13 +350,19 @@ async function ensureSchema(client) {
   const productCount = await client.query(`SELECT COUNT(*)::int AS count FROM product_master`);
   if (Number(productCount.rows[0]?.count || 0) === 0) {
     const master = productMasterSeed();
-    await client.query(
-      `INSERT INTO product_master (sku_number, product_name, product_id, imported_at)
-       SELECT * FROM UNNEST($1::VARCHAR[], $2::VARCHAR[], $3::VARCHAR[], $4::TIMESTAMP[])
-       ON CONFLICT (sku_number) DO UPDATE SET
-         product_name = excluded.product_name, product_id = excluded.product_id, imported_at = excluded.imported_at`,
-      [master.map((row) => row.sku_number), master.map((row) => row.product_name), master.map((row) => row.product_id), master.map(() => new Date())],
-    );
+    // MotherDuck does not prepare table-function array parameters consistently.
+    // This local CSV is trusted deployment data, so seed it in bounded escaped batches.
+    const literal = (value) => `'${String(value ?? "").replace(/'/g, "''")}'`;
+    for (let start = 0; start < master.length; start += 5000) {
+      const values = master.slice(start, start + 5000).map((row) =>
+        `(${literal(row.sku_number)},${literal(row.product_name)},${literal(row.product_id)},CURRENT_TIMESTAMP)`,
+      ).join(",");
+      await client.query(
+        `INSERT INTO product_master (sku_number, product_name, product_id, imported_at) VALUES ${values}
+         ON CONFLICT (sku_number) DO UPDATE SET
+           product_name = excluded.product_name, product_id = excluded.product_id, imported_at = excluded.imported_at`,
+      );
+    }
   }
 
   const checkerCount = await client.query(`SELECT COUNT(*) AS count FROM checker_master`);
@@ -1006,8 +1012,16 @@ module.exports = async (req, res) => {
       await ensureSchema(client);
 
       if (req.method === "GET" && action === "health") {
-        const result = await client.query("SELECT current_timestamp AS connected_at");
-        return json(res, 200, { ok: true, database: databaseName(), ...result.rows[0] });
+        const [result, products] = await Promise.all([
+          client.query("SELECT current_timestamp AS connected_at"),
+          client.query("SELECT COUNT(*)::INTEGER AS product_master_count FROM product_master"),
+        ]);
+        return json(res, 200, {
+          ok: true,
+          database: databaseName(),
+          product_master_count: Number(products.rows[0]?.product_master_count || 0),
+          ...result.rows[0],
+        });
       }
 
       if (req.method === "POST" && action === "login") {
