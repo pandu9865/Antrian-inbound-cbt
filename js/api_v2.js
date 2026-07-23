@@ -241,12 +241,15 @@ async function bulkCompleteOperationalTasks() {
   const button = document.getElementById("bulk-complete-operational-button");
   const result = document.getElementById("bulk-complete-operational-result");
   const operationalDate = String(input?.value || "").trim();
+  const allActive = Boolean(document.getElementById("bulk-complete-all-dates")?.checked);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(operationalDate)) {
     showToast("Pilih tanggal operasional yang valid.", "error");
     return;
   }
   const warning = [
-    `Clear semua tiket AKTIF tanggal ${operationalDate}?`,
+    allActive
+      ? "Clear semua tiket AKTIF dari seluruh tanggal operasional?"
+      : `Clear semua tiket AKTIF tanggal ${operationalDate}?`,
     "",
     "Status akan diproses sampai COMPLETED.",
     "PO menjadi Done Checking + Done GR + Handover GRN.",
@@ -259,8 +262,10 @@ async function bulkCompleteOperationalTasks() {
   try {
     const completed = await motherDuckApiPost("bulk_complete_operational", {
       operational_date: operationalDate,
+      all_active: allActive,
     });
-    const message = `Selesai: ${Number(completed.tickets_completed || 0)} tiket dan ${Number(completed.po_completed || 0)} PO menjadi COMPLETED.`;
+    const scope = completed.all_active ? "semua tanggal aktif" : `tanggal ${operationalDate}`;
+    const message = `Selesai (${scope}): ${Number(completed.tickets_completed || 0)} tiket dan ${Number(completed.po_completed || 0)} PO menjadi COMPLETED.`;
     if (result) result.textContent = message;
     showToast(message, "success");
     await refreshDashboard();

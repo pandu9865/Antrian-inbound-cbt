@@ -3592,11 +3592,12 @@ function pageDebug() {
     </div>
     ${isDeveloper ? `<div class="mt-5 border border-warning/40 rounded-lg p-4 bg-warning-container/10">
       <h4 class="font-bold text-warning mb-1">Clear task otomatis</h4>
-      <p class="text-sm text-on-surface-variant mb-3">Khusus akun Developer. Semua tiket aktif pada tanggal ini akan diproses sampai <b>COMPLETED</b>: panggil, bongkar/checking, Done GR, lalu Handover GRN. Actual Qty yang masih kosong diisi sesuai Qty PO. Riwayat ticket tetap tersimpan.</p>
+      <p class="text-sm text-on-surface-variant mb-3">Khusus akun Developer. Semua tiket aktif akan diproses sampai <b>COMPLETED</b>: panggil, bongkar/checking, Done GR, lalu Handover GRN. Actual Qty yang masih kosong diisi sesuai Qty PO. Riwayat ticket tetap tersimpan.</p>
       <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
         <label class="flex flex-col gap-1"><span class="text-xs font-bold uppercase">Tanggal operasional</span><input id="bulk-complete-operational-date" type="date" value="${esc(operationalDate)}" class="form-input" /></label>
         <button id="bulk-complete-operational-button" onclick="bulkCompleteOperationalTasks()" class="bg-warning text-on-warning px-5 py-3 rounded-lg font-bold">Clear semua tiket aktif</button>
       </div>
+      <label class="mt-3 inline-flex items-start gap-2 text-sm text-on-surface-variant cursor-pointer"><input id="bulk-complete-all-dates" type="checkbox" checked class="mt-1" /><span><b class="text-on-surface">Clear semua tanggal aktif</b><br/>Centang ini untuk termasuk tiket gantung dari hari operasional sebelumnya. Lepas centang bila hanya ingin tanggal di atas.</span></label>
       <p id="bulk-complete-operational-result" class="text-sm mt-3"></p>
     </div>` : ""}
   </div>`;

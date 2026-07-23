@@ -715,20 +715,21 @@ async function deleteTicketsByDate(client, operationalDate) {
 // their audit trail. Any blank actual quantity follows the PO request quantity.
 async function bulkCompleteOperational(client, body, session) {
   const operationalDate = clean(body.operational_date) || operationalWindowWib().key;
+  const allActive = body.all_active === true;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(operationalDate)) {
     throw new Error("operational_date harus format YYYY-MM-DD.");
   }
 
   const active = await client.query(
-    `SELECT ticket_id, queue_no, gate
+    `SELECT ticket_id, queue_no, gate, operational_date
      FROM tickets
-     WHERE operational_date = $1
-       AND UPPER(COALESCE(status, 'WAITING')) NOT IN ('COMPLETED', 'EXPIRED')
+     WHERE UPPER(COALESCE(status, 'WAITING')) NOT IN ('COMPLETED', 'EXPIRED')
+       ${allActive ? "" : "AND operational_date = $1"}
      ORDER BY created_at ASC`,
-    [operationalDate],
+    allActive ? [] : [operationalDate],
   );
   if (!active.rows.length) {
-    return { operational_date: operationalDate, tickets_completed: 0, po_completed: 0 };
+    return { operational_date: operationalDate, all_active: allActive, tickets_completed: 0, po_completed: 0 };
   }
 
   const actor = {
@@ -773,6 +774,7 @@ async function bulkCompleteOperational(client, body, session) {
     for (const ticket of active.rows) {
       await appendEvent(client, ticket.ticket_id, "DEVELOPER_BULK_COMPLETE", actor, {
         operational_date: operationalDate,
+        all_active: allActive,
         flow: ["CALLED", "UNLOADING", "DONE CHECKER", "DONE GR", "HANDOVER GRN"],
         gate: clean(ticket.gate) || null,
         note: "Developer bulk completion; actual qty kosong memakai request qty PO.",
@@ -781,6 +783,8 @@ async function bulkCompleteOperational(client, body, session) {
     await client.query("COMMIT");
     return {
       operational_date: operationalDate,
+      all_active: allActive,
+      operational_dates: [...new Set(active.rows.map((row) => row.operational_date).filter(Boolean))],
       tickets_completed: tickets.rowCount,
       po_completed: pos.rowCount,
     };
