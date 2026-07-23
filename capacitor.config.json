@@ -1,0 +1,12 @@
+{
+  "appId": "id.astronauts.inboundcbt",
+  "appName": "Inbound CBT",
+  "webDir": "mobile-web",
+  "server": {
+    "url": "https://antrian-inbound-cbt.vercel.app",
+    "cleartext": false,
+    "allowNavigation": [
+      "antrian-inbound-cbt.vercel.app"
+    ]
+  }
+}
