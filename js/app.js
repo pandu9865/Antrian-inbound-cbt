@@ -3581,6 +3581,17 @@ function pageDebug() {
       <div id="superset-freshness-output"><p class="text-sm text-on-surface-variant">Klik cek data live untuk melihat received time dan sync terakhir.</p></div>
     </section>
     <pre id="debug-output" class="bg-surface-container-high/60 border border-outline-variant rounded-lg p-4 text-xs overflow-auto max-h-[650px]">${esc(JSON.stringify(state.debug || { info: "Klik Run Debug" }, null, 2))}</pre>
+    ${isDeveloper ? `<div class="mt-6 border border-error/30 rounded-lg p-4 bg-error-container/10">
+      <h4 class="font-bold text-error mb-1">Hapus satu ticket salah input</h4>
+      <p class="text-sm text-on-surface-variant mb-3">Khusus Developer. Ticket, detail PO, dan event dihapus permanen hanya bila <b>Queue No + Plat + tanggal operasional</b> cocok persis. Tidak memengaruhi ticket lain.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:items-end">
+        <label class="flex flex-col gap-1"><span class="text-xs font-bold uppercase">Queue No</span><input id="single-ticket-queue-no" class="form-input" placeholder="Contoh: DROP-OFF 1-3" /></label>
+        <label class="flex flex-col gap-1"><span class="text-xs font-bold uppercase">Plat Number</span><input id="single-ticket-plate-number" class="form-input uppercase" placeholder="Contoh: D8559YT" /></label>
+        <label class="flex flex-col gap-1"><span class="text-xs font-bold uppercase">Tanggal operasional</span><input id="single-ticket-operational-date" type="date" value="${esc(operationalDate)}" class="form-input" /></label>
+      </div>
+      <button id="single-ticket-delete-button" onclick="deleteSingleTicket()" class="mt-3 bg-error text-on-error px-5 py-3 rounded-lg font-bold">Hapus satu ticket ini</button>
+      <p id="single-ticket-delete-result" class="text-sm mt-3"></p>
+    </div>` : ""}
     <div class="mt-6 border border-error/30 rounded-lg p-4 bg-error-container/10">
       <h4 class="font-bold text-error mb-1">Hapus data operasional per tanggal</h4>
       <p class="text-sm text-on-surface-variant mb-3">Khusus Developer. Menghapus ticket, detail PO, dan event pada tanggal yang dipilih secara permanen.</p>

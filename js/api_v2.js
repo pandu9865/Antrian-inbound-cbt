@@ -236,6 +236,41 @@ async function deleteTicketsByOperationalDate() {
   }
 }
 
+async function deleteSingleTicket() {
+  const queueInput = document.getElementById("single-ticket-queue-no");
+  const plateInput = document.getElementById("single-ticket-plate-number");
+  const dateInput = document.getElementById("single-ticket-operational-date");
+  const button = document.getElementById("single-ticket-delete-button");
+  const result = document.getElementById("single-ticket-delete-result");
+  const queueNo = String(queueInput?.value || "").trim();
+  const plateNumber = String(plateInput?.value || "").replace(/\s+/g, "").toUpperCase();
+  const operationalDate = String(dateInput?.value || "").trim();
+  if (!queueNo || !plateNumber || !/^\d{4}-\d{2}-\d{2}$/.test(operationalDate)) {
+    showToast("Isi Queue No, Plat Number, dan tanggal operasional secara lengkap.", "error");
+    return;
+  }
+  if (!confirm(`HAPUS PERMANEN satu ticket ini?\n\nQueue: ${queueNo}\nPlat: ${plateNumber}\nTanggal operasional: ${operationalDate}\n\nTicket, detail PO, dan event terkait akan dihapus.`)) return;
+  if (button) button.disabled = true;
+  if (result) result.textContent = "Mencari dan menghapus satu ticket di MotherDuck...";
+  try {
+    const deleted = await motherDuckApiPost("delete_single_ticket", {
+      queue_no: queueNo,
+      plat_number: plateNumber,
+      operational_date: operationalDate,
+    });
+    const message = `Ticket ${deleted?.deleted_ticket?.queue_no || queueNo} (${plateNumber}) terhapus: ${Number(deleted.tickets_deleted || 0)} ticket, ${Number(deleted.po_rows_deleted || 0)} PO, ${Number(deleted.events_deleted || 0)} event.`;
+    if (result) result.textContent = message;
+    showToast(message, "success");
+    await refreshDashboard();
+  } catch (error) {
+    const message = error?.message || "Gagal menghapus ticket.";
+    if (result) result.textContent = message;
+    showToast(message, "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function bulkCompleteOperationalTasks() {
   const input = document.getElementById("bulk-complete-operational-date");
   const button = document.getElementById("bulk-complete-operational-button");

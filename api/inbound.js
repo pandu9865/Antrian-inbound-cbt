@@ -127,7 +127,7 @@ function clearSessionCookie(res) {
 function canUseAction(session, action) {
   if (!session) return false;
   const role = clean(session.role).toUpperCase();
-  if (action === "delete_tickets_by_date") return ["ADMIN", "DEVELOPER"].includes(role);
+  if (["delete_tickets_by_date", "delete_single_ticket"].includes(action)) return ["ADMIN", "DEVELOPER"].includes(role);
   if (action === "bulk_complete_operational") return role === "DEVELOPER";
   if (["state", "tickets", "export_rows", "create_ticket"].includes(action)) return ["SECURITY", "CHECKER", "SPV", "ADMIN", "DEVELOPER"].includes(role);
   if (action === "superset_freshness") return ["SPV", "ADMIN", "DEVELOPER"].includes(role);
@@ -711,6 +711,54 @@ async function deleteTicketsByDate(client, operationalDate) {
   }
 }
 
+// Deletes exactly one accidental ticket. The queue, plate, and operational date
+// combination prevents a broad date cleanup from affecting active operations.
+async function deleteSingleTicket(client, body) {
+  const queueNo = clean(body.queue_no);
+  const plateNumber = clean(body.plat_number).replace(/\s+/g, "").toUpperCase();
+  const operationalDate = clean(body.operational_date);
+  if (!queueNo || !plateNumber || !/^\d{4}-\d{2}-\d{2}$/.test(operationalDate)) {
+    throw new Error("Queue No, Plat Number, dan tanggal operasional wajib diisi.");
+  }
+
+  const found = await client.query(
+    `SELECT ticket_id, queue_no, plat_number, operational_date
+     FROM tickets
+     WHERE queue_no = $1
+       AND UPPER(REPLACE(COALESCE(plat_number, ''), ' ', '')) = $2
+       AND operational_date = $3`,
+    [queueNo, plateNumber, operationalDate],
+  );
+  if (!found.rows.length) {
+    throw new Error("Ticket tidak ditemukan. Pastikan Queue No, plat, dan tanggal operasional sudah tepat.");
+  }
+  if (found.rows.length > 1) {
+    throw new Error("Ditemukan lebih dari satu ticket. Hubungi Developer untuk pengecekan ticket_id.");
+  }
+
+  const ticket = found.rows[0];
+  await client.query("BEGIN");
+  try {
+    const events = await client.query("DELETE FROM ticket_events WHERE ticket_id = $1", [ticket.ticket_id]);
+    const pos = await client.query("DELETE FROM ticket_pos WHERE ticket_id = $1", [ticket.ticket_id]);
+    await client.query(
+      "UPDATE gates SET status = 'KOSONG', ticket_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE ticket_id = $1",
+      [ticket.ticket_id],
+    );
+    const tickets = await client.query("DELETE FROM tickets WHERE ticket_id = $1", [ticket.ticket_id]);
+    await client.query("COMMIT");
+    return {
+      deleted_ticket: ticket,
+      tickets_deleted: tickets.rowCount,
+      po_rows_deleted: pos.rowCount,
+      events_deleted: events.rowCount,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
 // Developer-only tool for closing test/stuck operational tickets without deleting
 // their audit trail. Any blank actual quantity follows the PO request quantity.
 async function bulkCompleteOperational(client, body, session) {
@@ -1165,6 +1213,9 @@ module.exports = async (req, res) => {
       }
       if (req.method === "POST" && action === "delete_tickets_by_date") {
         return json(res, 200, { ok: true, data: await deleteTicketsByDate(client, clean(body.operational_date)) });
+      }
+      if (req.method === "POST" && action === "delete_single_ticket") {
+        return json(res, 200, { ok: true, data: await deleteSingleTicket(client, body) });
       }
       if (req.method === "POST" && action === "bulk_complete_operational") {
         return json(res, 200, { ok: true, data: await bulkCompleteOperational(client, body, session) });
